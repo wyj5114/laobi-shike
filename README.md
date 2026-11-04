@@ -46,7 +46,7 @@ backend/
   skills/         笔记生成 Skill
   tests/          pytest
   main.py         后端入口
-BillNote_frontend_vue/
+frontend/
   src/            Vue 前端
 start_local.bat   Windows 一键启动
 .env.example      环境变量示例
@@ -59,6 +59,51 @@ start_local.bat   Windows 一键启动
 - FFmpeg（仓库已附带 Windows 版：`tools/ffmpeg/bin/ffmpeg.exe`）
 - GPU 转写可选：torch 2.7.1 + CUDA 12.8（安装方法见 `tools/README.md`）
 
+## 硬件与转写方案建议
+
+转写速度主要取决于是否有 GPU 加速。CPU 也能跑，但通常慢 3~5 倍。以下是 `base` 模型、仅计算「语音转写」的实测/估算，不含音频下载和 AI 生成笔记：
+
+| 设备 / 方案 | 30 分钟音频 | 60 分钟音频 | 建议 |
+|---|---|---|---|
+| **RTX 5060 · CUDA base** | 约 **2~2.5 分钟** | 约 4~5 分钟 | 游戏本首选；NVIDIA 独显 + CUDA 12.8 |
+| **Mac M 系列 · MLX base** | 约 **2.5~4 分钟** | 约 5~8 分钟 | Apple Silicon 首选；`mlx-whisper` |
+| Mac M 系列 · CPU int8 base | 约 4~7 分钟 | 约 8~14 分钟 | 没装 MLX 时的回退方案 |
+| Intel Mac · CPU int8 base | 约 8~15 分钟 | 约 16~30 分钟 | 无 CUDA，只能用 CPU |
+
+### 游戏本 / Windows NVIDIA
+
+建议直接用 GPU，不要用 CPU 硬跑：
+
+- 使用 NVIDIA 独显，插电并开启「独显直连 / 高性能模式」
+- 安装 CUDA 12.8 版 torch（本项目验证环境为 `torch 2.7.1+cu128`）
+- 转写器选择 `fast-whisper`，模型先用 `base`
+- 8 GB 显存建议批量并发 **1~2**，不要直接上 3
+
+```powershell
+python -m pip install torch==2.7.1 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.is_available())"
+```
+
+### Mac
+
+**Apple Silicon（M1/M2/M3/M4）建议用 MLX，不要用 CPU 版**：
+
+```bash
+python -m pip install mlx-whisper
+```
+
+然后在「设置 → 转写引擎」选择 `mlx-whisper`，模型用 `base`。MLX 走 Apple Metal，速度明显快于 CPU。
+
+**Intel Mac** 没有 CUDA，也没有 MLX，只能 CPU；建议用 `base` 或 `tiny`，30 分钟音频大约 8~15 分钟。
+
+### 模型选择
+
+- `tiny`：最快，适合快速过一遍
+- `base`：**默认推荐**，速度和识别质量平衡
+- `small`：质量更好，但 CPU 上明显更慢
+- `medium` / `large-v3`：建议只在 GPU 上使用
+
+> 以上只是转写时间；完整任务还要加上 B 站音频下载和 AI 生成笔记的时间。
 ## 工具
 
 - `tools/ffmpeg/bin/ffmpeg.exe`：Windows x64 FFmpeg，可直接使用。
@@ -86,7 +131,7 @@ pip install -r requirements.txt
 python main.py
 
 # 前端（另开终端）
-cd BillNote_frontend_vue
+cd frontend
 npm install
 npm run dev
 ```

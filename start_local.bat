@@ -12,7 +12,7 @@ set "VITE_FRONTEND_PORT=3017"
 
 echo Starting BÕ¾Ê°¿Î ...
 start "Shike Backend :8484" /D "%CD%\backend" cmd /k "%PY% main.py"
-start "Shike UI :3017" /D "%CD%\BillNote_frontend_vue" cmd /k "npm run dev"
+start "Shike UI :3017" /D "%CD%\frontend" cmd /k "npm run dev"
 
 timeout /t 8 /nobreak >nul
 start "" "http://localhost:3017"

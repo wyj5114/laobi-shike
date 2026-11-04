@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ChevronDown, ChevronRight, FileDown, Folder, Link2, Pencil } from 'lucide-vue-next'
+import { ArrowUpRight, BookOpen, CheckCheck, ChevronDown, ChevronRight, FileDown, Folder, Leaf, Link2, Pencil, Sparkles } from 'lucide-vue-next'
 import { useLibraryStore, type NoteSummary } from '@/stores/library'
 import { api, type ApiCollection, type ApiModel, type ApiProvider } from '@/services/api'
 
 const router = useRouter()
 const library = useLibraryStore()
+const completedCount = computed(() => library.notes.filter(note => note.status === 'done').length)
+const activeCount = computed(() => library.notes.filter(note => note.status === 'running' || note.status === 'pending').length)
 
 const url = ref(new URLSearchParams(window.location.search).get('url') || '')
 const submitted = ref('')
@@ -299,32 +301,61 @@ function statusLabel(status: NoteSummary['status']) {
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto">
-    <div class="mx-auto w-[760px] pb-24 pt-20">
-      <p class="mb-4 text-[11.5px] uppercase tracking-[.16em] text-accent">哔站拾课 · 课程笔记</p>
-      <h1 class="text-[42px] font-semibold leading-[1.2] tracking-[-0.03em]">今天想学点什么？</h1>
-      <p class="mt-3 text-[14.5px] text-muted">粘贴 B 站视频链接，剩下的交给哔站拾课。</p>
+  <div class="study-home h-full overflow-y-auto">
+    <div class="study-workspace">
+      <div class="study-welcome">
+        <div>
+          <p class="study-eyebrow"><span /> 一方书桌，一点新知</p>
+          <h1>今天，也离新知近一点。</h1>
+          <p class="study-intro">把看过的课程，变成真正属于你的知识。</p>
+        </div>
+        <span class="welcome-note"><Leaf :size="16" /> 保持好奇，慢慢积累</span>
+      </div>
+
+      <div class="study-hero">
+        <div class="hero-message">
+          <p class="study-eyebrow">从一节课开始</p>
+          <h2>让每一次学习，<br />都有迹可循。</h2>
+          <p>视频转笔记 · 重点提炼 · 随时回顾</p>
+          <span class="hero-tag"><BookOpen :size="14" /> 你的个人知识库，从这里生长</span>
+        </div>
+        <div class="hero-notebook" aria-hidden="true">
+          <div class="notebook-tab">LEARNING NOTES</div>
+          <div class="notebook-heading">拾起今天的灵感</div>
+          <div class="notebook-line long" /><div class="notebook-line" />
+          <div class="notebook-highlight"><CheckCheck :size="16" /> 理解，比记住更重要</div>
+          <div class="notebook-line long" /><div class="notebook-line short" />
+          <span class="notebook-leaf"><Leaf :size="40" :stroke-width="1" /></span>
+        </div>
+      </div>
+
+      <div class="study-content-grid">
+      <div class="min-w-0">
 
       <!-- 输入台 -->
-      <div class="glass-card glass-card-hover mt-9 rounded-[16px] p-2.5">
-        <div class="flex items-center gap-3 px-3 py-1.5">
+      <div class="glass-card study-import rounded-[16px] p-5">
+        <div class="import-heading"><span class="import-icon"><Link2 :size="18" /></span><div><h2>开启一段新学习</h2><p>粘贴课程链接，自动整理成结构化笔记</p></div><span class="import-badge">B 站课程</span></div>
+        <div class="study-url-field flex items-center gap-3 px-3 py-1.5">
           <Link2 :size="18" :stroke-width="1.7" class="shrink-0 text-faint" />
           <input
             v-model="url"
             class="h-10 min-w-0 flex-1 bg-transparent text-[15.5px] text-ink outline-none placeholder:text-faint"
-            placeholder="粘贴 B 站视频链接，回车开始…"
+            placeholder="粘贴 bilibili.com 或 b23.tv 课程链接…"
+            aria-label="B 站课程链接"
+            :aria-invalid="showError"
             @keydown.enter="submit"
           />
           <button
             class="h-10 shrink-0 rounded-[9px] px-5 text-[13.5px] tracking-[.02em] transition-colors"
-            :class="isBilibili ? 'bg-accent text-white hover:bg-[#1d4ed8]' : 'cursor-not-allowed bg-surface-2 text-faint'"
+            :class="isBilibili ? 'bg-accent text-white hover:opacity-90' : 'cursor-not-allowed bg-surface-2 text-muted'"
+            :disabled="!isBilibili"
             @click="submit"
           >
             生成笔记
           </button>
         </div>
 
-        <div class="mt-1 flex items-center gap-2 border-t border-line-soft px-3 pb-1.5 pt-2.5">
+        <div class="mt-3 flex flex-wrap items-center gap-2 pb-1.5 pt-2.5">
           <label class="glass-chip flex items-center gap-1 rounded-md px-2 py-1 text-[12px] text-muted">
             模型 ·
             <select v-model="selectedModel" class="max-w-[190px] bg-transparent text-[12px] text-ink outline-none">
@@ -434,9 +465,9 @@ function statusLabel(status: NoteSummary['status']) {
       </div>
 
       <!-- 最近笔记 -->
-      <section class="glass-panel mt-12 rounded-[16px] p-5">
+      <section class="glass-panel study-recent mt-7 rounded-[16px] p-5">
         <div class="flex items-baseline justify-between border-b border-line pb-3">
-          <h2 class="text-[17px] font-semibold tracking-[-0.01em]">最近笔记</h2>
+          <h2 class="text-[17px] font-semibold tracking-[-0.01em]">继续积累</h2>
           <div class="flex items-center gap-4">
             <button class="text-[12px] text-accent hover:underline" @click="newGroupOpen = true">＋ 新建分组</button>
             <RouterLink to="/library" class="text-[12px] text-muted hover:text-ink">查看全部 →</RouterLink>
@@ -457,6 +488,12 @@ function statusLabel(status: NoteSummary['status']) {
           <button class="px-2 text-[12px] text-muted" @click="newGroupOpen = false">取消</button>
         </div>
         <p v-if="newGroupError" class="mt-1 text-[11.5px] text-accent">{{ newGroupError }}</p>
+
+        <div v-if="library.loaded && !library.notes.length && !library.groups.length" class="study-empty">
+          <BookOpen :size="28" :stroke-width="1.3" />
+          <h3>第一页，留给今天的新知</h3>
+          <p>在上方导入一节课程，你的学习笔记会出现在这里。</p>
+        </div>
 
         <div v-for="group in library.sortedGroups" :key="group.id" class="mt-2">
           <div class="flex cursor-pointer items-center gap-2 py-3" @click="library.toggleGroup(group.id)">
@@ -556,6 +593,22 @@ function statusLabel(status: NoteSummary['status']) {
           </ul>
         </div>
       </section>
+      </div>
+      <aside class="study-aside">
+        <section class="study-overview">
+          <div class="aside-title"><span>我的学习积累</span><BookOpen :size="16" /></div>
+          <div class="study-total"><strong>{{ completedCount }}</strong><span>篇已完成笔记</span></div>
+          <div class="study-counts"><div><b>{{ library.groups.length }}</b><span>课程分组</span></div><div><b>{{ activeCount }}</b><span>进行中任务</span></div></div>
+          <RouterLink to="/library" class="aside-link">查看我的知识库 <ArrowUpRight :size="15" /></RouterLink>
+        </section>
+        <section class="study-guide">
+          <div class="aside-title"><span>学习可以很简单</span><Sparkles :size="16" /></div>
+          <ol><li><span>01</span><div><b>收藏一节好课</b><p>粘贴链接，单集或合集都可以</p></div></li><li><span>02</span><div><b>梳理知识脉络</b><p>提炼重点，生成笔记与思维导图</p></div></li><li><span>03</span><div><b>把知识变成自己的</b><p>回看笔记，带着问题继续探索</p></div></li></ol>
+        </section>
+        <div class="study-quote"><span>“</span><p>学习不是填满水桶，<br />而是点燃火焰。</p><small>给每一个保持好奇的你</small></div>
+      </aside>
+      </div>
+      <footer class="study-footer"><Leaf :size="13" /> 老哔拾课 · 把知识拾起，把成长留下</footer>
     </div>
   </div>
 </template>

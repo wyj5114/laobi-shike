@@ -1,4 +1,4 @@
-export type ThemeId = 'cobalt' | 'guofeng' | 'claude' | 'sky' | 'ghibli'
+export type ThemeId = 'study' | 'cobalt' | 'guofeng' | 'claude' | 'sky' | 'ghibli'
 
 export interface ThemeOption {
   id: ThemeId
@@ -8,6 +8,12 @@ export interface ThemeOption {
 }
 
 export const THEMES: ThemeOption[] = [
+  {
+    id: 'study',
+    name: '青笺 · 学习空间',
+    subtitle: '暖白纸张 + 鼠尾草绿 + 墨色',
+    colors: ['#F3F4EE', '#FAFAF6', '#486B55', '#E1E5DC'],
+  },
   {
     id: 'cobalt',
     name: 'Cobalt Graphite',
@@ -50,7 +56,7 @@ export function getStoredTheme(): ThemeId {
   const preview = new URLSearchParams(window.location.search).get('theme')
   if (isThemeId(preview)) return preview
   const stored = localStorage.getItem(STORAGE_KEY)
-  return isThemeId(stored) ? stored : 'cobalt'
+  return isThemeId(stored) ? stored : 'study'
 }
 
 export function applyTheme(id: ThemeId) {

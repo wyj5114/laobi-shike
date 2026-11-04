@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { Cpu, KeyRound, Palette, Info, Boxes, Plus, X, Check } from 'lucide-vue-next'
 import { api, type ApiProvider, type ApiModel } from '@/services/api'
 import { THEMES, applyTheme, getStoredTheme, type ThemeId } from '@/design/themes'
+import TranscriberSettings from '@/components/settings/TranscriberSettings.vue'
 
 const route = useRoute()
 const active = ref(String(route.query.tab || 'model'))
@@ -303,21 +304,7 @@ async function removeModel(model: ApiModel) {
           </div>
 
           <!-- 转写引擎 -->
-          <div v-else-if="active === 'transcriber'" class="space-y-3">
-            <h2 class="text-[16px] font-semibold">转写引擎</h2>
-            <p class="text-[12px] text-muted">本地引擎需要先下载模型；在线引擎需要配置 API Key。</p>
-            <div class="rounded-[12px] border border-accent/40 bg-accent-soft/40 p-4">
-              <div class="flex items-center justify-between">
-                <p class="text-[14px] font-medium">faster-whisper</p>
-                <span class="rounded-full bg-surface px-2 py-0.5 text-[11px] text-accent">当前使用</span>
-              </div>
-              <p class="mt-1 text-[12px] text-muted">模型 base · cuda / float16 · 20 线程可用</p>
-            </div>
-            <div class="glass-card rounded-[12px] p-4">
-              <p class="text-[14px] font-medium">Groq</p>
-              <p class="mt-1 text-[12px] text-muted">whisper-large-v3-turbo · 在线转写</p>
-            </div>
-          </div>
+          <TranscriberSettings v-else-if="active === 'transcriber'" @open-models="active = 'model'" />
 
           <!-- B 站设置 -->
           <div v-else-if="active === 'bilibili'" class="space-y-3">

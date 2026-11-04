@@ -25,6 +25,22 @@ export interface ApiGroup {
   count: number
 }
 
+export interface ApiTranscriberConfig {
+  transcriber_type: string
+  whisper_model_size: string
+  available_types: { value: string; label: string }[]
+  whisper_model_sizes: string[]
+  mlx_whisper_available: boolean
+}
+
+export interface ApiTranscriberModelStatus {
+  model_size: string
+  downloaded: boolean
+  downloading: boolean
+  failed: boolean
+  error?: string
+}
+
 export interface ApiTranscriptSegment {
   start: number
   end: number
@@ -191,6 +207,12 @@ export async function chatAskStream(
 }
 
 export const api = {
+  getTranscriberConfig: () => request<ApiTranscriberConfig>('/transcriber_config'),
+  saveTranscriberConfig: (payload: { transcriber_type: string; whisper_model_size: string }) =>
+    request<{ transcriber_type: string; whisper_model_size: string }>('/transcriber_config', { method: 'POST', body: JSON.stringify(payload) }),
+  getTranscriberModelsStatus: () => request<{ whisper: ApiTranscriberModelStatus[]; mlx_whisper: ApiTranscriberModelStatus[] }>('/transcriber_models_status'),
+  downloadTranscriberModel: (payload: { transcriber_type: string; model_size: string }) =>
+    request<unknown>('/transcriber_download', { method: 'POST', body: JSON.stringify(payload) }),
   listGroups: () => request<ApiGroup[]>('/groups'),
   createGroup: (name: string) =>
     request<ApiGroup>('/groups', { method: 'POST', body: JSON.stringify({ name }) }),

@@ -1,12 +1,73 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ChevronDown, ChevronRight, FileDown, Folder, Link2, Pencil } from 'lucide-vue-next'
+import { ArrowRight, ArrowUpRight, BookOpen, Check, ChevronDown, ChevronRight, Clock3, FileDown, Folder, Leaf, Link2, LoaderCircle, Pencil, Search, Settings2, Sparkles, X } from 'lucide-vue-next'
 import { useLibraryStore, type NoteSummary } from '@/stores/library'
 import { api, type ApiCollection, type ApiModel, type ApiProvider } from '@/services/api'
+import '@/design/workspace.css'
 
 const router = useRouter()
 const library = useLibraryStore()
+const completedCount = computed(() => library.notes.filter(note => note.status === 'done').length)
+const activeCount = computed(() => library.notes.filter(note => note.status === 'running' || note.status === 'pending').length)
+const noteQuery = ref('')
+const noteFilter = ref('all')
+const noteFilters = computed(() => [
+  { id: 'all', label: '全部', count: library.notes.length },
+  { id: 'done', label: '已完成', count: completedCount.value },
+  { id: 'active', label: '进行中', count: activeCount.value },
+  { id: 'failed', label: '需处理', count: library.notes.filter(note => note.status === 'failed').length },
+])
+const filteredNotes = computed(() => {
+  const query = noteQuery.value.trim().toLowerCase()
+  return library.sortedNotes.filter(note =>
+    (!query || `${note.title} ${note.author}`.toLowerCase().includes(query)) &&
+    (noteFilter.value === 'all' || (noteFilter.value === 'active' ? ['pending', 'running'].includes(note.status) : note.status === noteFilter.value)),
+  )
+})
+const visibleGroups = computed(() => library.sortedGroups.filter(group =>
+  filteredNotes.value.some(note => note.groupId === group.id) || (!noteQuery.value.trim() && noteFilter.value === 'all'),
+))
+const filteredUngrouped = computed(() => filteredNotes.value.filter(note => note.groupId === null))
+watch([noteQuery, noteFilter], () => {
+  for (const group of visibleGroups.value) library.collapsed[group.id] = false
+  library.collapsed.ungrouped = false
+})
+const today = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long', timeZone: 'Asia/Shanghai' }).format(new Date())
+const urlInput = ref<HTMLInputElement | null>(null)
+const submitting = ref(false)
+const configLoading = ref(true)
+const transcriberLabel = ref('正在读取')
+const transcriberReady = ref<boolean | null>(null)
+
+async function loadTranscriberStatus() {
+  try {
+    const config = await api.getTranscriberConfig()
+    const engine = config.available_types.find(item => item.value === config.transcriber_type)?.label ?? config.transcriber_type
+    transcriberLabel.value = engine
+    if (['fast-whisper', 'mlx-whisper'].includes(config.transcriber_type)) {
+      const statuses = await api.getTranscriberModelsStatus()
+      const models = config.transcriber_type === 'mlx-whisper' ? statuses.mlx_whisper : statuses.whisper
+      transcriberReady.value = models.some(item => item.model_size === config.whisper_model_size && item.downloaded)
+      transcriberLabel.value = `${engine} · ${config.whisper_model_size}`
+    } else {
+      transcriberReady.value = true
+    }
+  } catch {
+    transcriberReady.value = null
+    transcriberLabel.value = '暂时无法读取，请检查设置'
+  }
+}
+
+async function pasteLink() {
+  try {
+    url.value = (await navigator.clipboard.readText()).trim()
+    urlInput.value?.focus()
+  } catch {
+    submitted.value = '无法读取剪贴板，请在输入框按 Ctrl + V 粘贴。'
+    urlInput.value?.focus()
+  }
+}
 
 const url = ref(new URLSearchParams(window.location.search).get('url') || '')
 const submitted = ref('')
@@ -36,8 +97,10 @@ const isBilibili = computed(() => /(bilibili\.com\/video\/|b23\.tv\/)/i.test(url
 let refreshTimer: number | undefined
 
 watch(url, value => {
+  submitted.value = ''
   if (collectionTimer) window.clearTimeout(collectionTimer)
   collection.value = null
+  collectionLoading.value = false
   selectedCollectionIds.value = []
   collectionError.value = ''
   if (!/(bilibili\.com\/video\/|b23\.tv\/)/i.test(value)) return
@@ -45,8 +108,7 @@ watch(url, value => {
 })
 
 onMounted(async () => {
-  await library.load()
-  await loadModelConfig()
+  await Promise.all([library.load(), loadModelConfig(), loadTranscriberStatus()])
   if (isBilibili.value) void loadCollection()
   refreshTimer = window.setInterval(() => library.load(), 5000)
 })
@@ -57,6 +119,8 @@ onUnmounted(() => {
 })
 
 async function loadModelConfig() {
+  configLoading.value = true
+  configError.value = ''
   try {
     providers.value = await api.listProviders()
     const usable = providers.value.find(p => p.enabled && p.api_key)
@@ -91,13 +155,15 @@ async function loadModelConfig() {
     configError.value = ''
   } catch (error) {
     configError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    configLoading.value = false
   }
 }
 const showError = computed(() => url.value.trim().length > 0 && !isBilibili.value)
 
 const videoId = computed(() => {
   const match = url.value.match(/(BV[a-zA-Z0-9]+)/)
-  return match?.[1] ?? 'BV1xx411c7mD'
+  return match?.[1] ?? 'b23.tv 短链接'
 })
 
 const formats = ['目录', 'AI 总结']
@@ -122,17 +188,20 @@ const selectedCollectionItems = computed(() =>
 
 async function loadCollection() {
   if (!isBilibili.value) return
+  const requestedUrl = url.value
   collectionLoading.value = true
   collectionError.value = ''
   try {
-    const data = await api.getCollection(url.value)
+    const data = await api.getCollection(requestedUrl)
+    if (requestedUrl !== url.value) return
     collection.value = data
     rangeStart.value = 1
     rangeEnd.value = data.total
   } catch (error) {
+    if (requestedUrl !== url.value) return
     collectionError.value = error instanceof Error ? error.message : String(error)
   } finally {
-    collectionLoading.value = false
+    if (requestedUrl === url.value) collectionLoading.value = false
   }
 }
 
@@ -144,7 +213,7 @@ function toggleCollectionItem(id: string) {
 
 function selectAllCollection() {
   if (!collection.value) return
-  selectedCollectionIds.value = collection.value.items.map(item => item.video_id)
+  selectedCollectionIds.value = collection.value.items.filter(item => !item.generated).map(item => item.video_id)
 }
 
 function selectUngenerated() {
@@ -164,6 +233,7 @@ function applyCollectionRange() {
   rangeEnd.value = end
   selectedCollectionIds.value = collection.value.items
     .slice(start - 1, end)
+    .filter(item => !item.generated)
     .map(item => item.video_id)
 }
 
@@ -208,11 +278,13 @@ async function generateCollection() {
 }
 
 async function submit() {
-  if (!isBilibili.value) return
+  if (!isBilibili.value || submitting.value) return
   if (!selectedProvider.value || !selectedModel.value) {
     submitted.value = configError.value || '请先在设置中配置模型 API Key'
     return
   }
+  submitting.value = true
+  submitted.value = ''
   try {
     const { task_id } = await api.generateNote({
       video_url: url.value,
@@ -235,6 +307,8 @@ async function submit() {
     router.push(`/tasks/${task_id}`)
   } catch (error) {
     submitted.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    submitting.value = false
   }
 }
 
@@ -299,36 +373,60 @@ function statusLabel(status: NoteSummary['status']) {
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto">
-    <div class="mx-auto w-[760px] pb-24 pt-20">
-      <p class="mb-4 text-[11.5px] uppercase tracking-[.16em] text-accent">哔站拾课 · 课程笔记</p>
-      <h1 class="text-[42px] font-semibold leading-[1.2] tracking-[-0.03em]">今天想学点什么？</h1>
-      <p class="mt-3 text-[14.5px] text-muted">粘贴 B 站视频链接，剩下的交给哔站拾课。</p>
+  <div class="study-home h-full overflow-y-auto">
+    <div class="study-workspace workspace-v2">
+      <div class="study-welcome">
+        <div>
+          <p class="study-eyebrow"><span /> 我的学习工作台</p>
+          <h1>把今天的好奇，变成明天的收获。</h1>
+          <p class="study-intro">从一节好课开始，让每一点新知都有迹可循。</p>
+        </div>
+        <span class="workspace-date"><Clock3 :size="14" /> {{ today }}</span>
+      </div>
+
+      <div class="workspace-stats" aria-label="学习概览">
+        <RouterLink to="/library" class="workspace-stat"><span class="stat-icon"><BookOpen :size="19" /></span><div><span>已积累笔记</span><strong>{{ completedCount }}<small>篇</small></strong></div><ArrowUpRight :size="15" /></RouterLink>
+        <RouterLink to="/tasks" class="workspace-stat"><span class="stat-icon stat-icon-warm"><Clock3 :size="19" /></span><div><span>进行中任务</span><strong>{{ activeCount }}<small>个</small></strong></div><ArrowUpRight :size="15" /></RouterLink>
+        <RouterLink to="/library" class="workspace-stat"><span class="stat-icon stat-icon-neutral"><Folder :size="19" /></span><div><span>课程分组</span><strong>{{ library.groups.length }}<small>组</small></strong></div><ArrowUpRight :size="15" /></RouterLink>
+      </div>
+
+      <div class="study-content-grid">
+      <div class="min-w-0">
 
       <!-- 输入台 -->
-      <div class="glass-card glass-card-hover mt-9 rounded-[16px] p-2.5">
-        <div class="flex items-center gap-3 px-3 py-1.5">
+      <div class="glass-card study-import rounded-[16px] p-5">
+        <div class="import-heading"><span class="import-icon"><Sparkles :size="19" /></span><div><h2>开启一段新学习</h2><p>把视频里的知识，整理成可以反复翻阅的笔记</p></div><span class="import-badge">支持单集 / 合集</span></div>
+        <div class="study-url-field flex items-center gap-3 px-3 py-1.5">
           <Link2 :size="18" :stroke-width="1.7" class="shrink-0 text-faint" />
           <input
             v-model="url"
+            ref="urlInput"
             class="h-10 min-w-0 flex-1 bg-transparent text-[15.5px] text-ink outline-none placeholder:text-faint"
-            placeholder="粘贴 B 站视频链接，回车开始…"
+            placeholder="粘贴 bilibili.com 或 b23.tv 课程链接…"
+            aria-label="B 站课程链接"
+            :aria-invalid="showError"
+            aria-describedby="workspace-link-help"
+            :disabled="submitting"
             @keydown.enter="submit"
           />
+          <button v-if="url && !submitting" class="workspace-clear" aria-label="清空课程链接" @click="url = ''; urlInput?.focus()"><X :size="15" /></button>
+          <button v-if="!url" class="workspace-paste" @click="pasteLink">粘贴</button>
           <button
-            class="h-10 shrink-0 rounded-[9px] px-5 text-[13.5px] tracking-[.02em] transition-colors"
-            :class="isBilibili ? 'bg-accent text-white hover:bg-[#1d4ed8]' : 'cursor-not-allowed bg-surface-2 text-faint'"
+            class="workspace-generate"
+            :class="isBilibili ? 'bg-accent text-white hover:opacity-90' : 'cursor-not-allowed bg-surface-2 text-muted'"
+            :disabled="!isBilibili || submitting || configLoading || !selectedModel"
             @click="submit"
           >
-            生成笔记
+            <LoaderCircle v-if="submitting" :size="15" class="workspace-spinner" /><Sparkles v-else :size="15" />
+            {{ submitting ? '提交中…' : '生成笔记' }}
           </button>
         </div>
 
-        <div class="mt-1 flex items-center gap-2 border-t border-line-soft px-3 pb-1.5 pt-2.5">
+        <div class="workspace-options mt-3 flex flex-wrap items-center gap-2 pb-1.5 pt-2.5">
           <label class="glass-chip flex items-center gap-1 rounded-md px-2 py-1 text-[12px] text-muted">
             模型 ·
-            <select v-model="selectedModel" class="max-w-[190px] bg-transparent text-[12px] text-ink outline-none">
-              <option v-if="!availableModels.length" value="">未配置</option>
+            <select v-model="selectedModel" aria-label="生成模型" :disabled="configLoading || submitting" class="max-w-[190px] bg-transparent text-[12px] text-ink outline-none">
+              <option v-if="!availableModels.length" value="">{{ configLoading ? '读取中…' : '未配置' }}</option>
               <option v-for="item in availableModels" :key="String(item.id)" :value="String(item.model_name ?? item.id)">
                 {{ item.model_name ?? item.id }}
               </option>
@@ -336,24 +434,25 @@ function statusLabel(status: NoteSummary['status']) {
           </label>
           <label class="glass-chip flex items-center gap-1 rounded-md px-2 py-1 text-[12px] text-muted">
             风格 ·
-            <select v-model="selectedStyle" class="bg-transparent text-[12px] text-ink outline-none">
+            <select v-model="selectedStyle" aria-label="笔记风格" :disabled="submitting" class="bg-transparent text-[12px] text-ink outline-none">
               <option v-for="item in styles" :key="item.value" :value="item.value">{{ item.label }}</option>
             </select>
           </label>
           <span class="glass-chip rounded-md px-2 py-1 text-[12px] text-muted">格式 · {{ formats.join(' + ') }}</span>
         </div>
+        <p id="workspace-link-help" class="workspace-input-hint"><Check :size="13" /> 支持 B 站视频及多 P 课程，粘贴后自动识别合集。</p>
 
-        <div v-if="configError" class="border-t border-line-soft px-3 py-2 text-[11.5px] text-accent">
-          {{ configError }} · <RouterLink to="/settings" class="underline">去设置</RouterLink>
+        <div v-if="configError" class="workspace-notice" role="alert">
+          <Settings2 :size="16" /><span>{{ configError }}</span><RouterLink to="/settings" class="underline">配置模型 <ArrowRight :size="12" /></RouterLink>
         </div>
       </div>
 
-      <p v-if="showError" class="mt-2 text-[12.5px] text-accent">这看起来不是 B 站链接，请粘贴 bilibili.com 或 b23.tv 链接。</p>
-      <p v-else-if="submitted" class="mt-2 text-[12.5px] text-success">{{ submitted }}</p>
+      <p v-if="showError" class="workspace-error" role="alert">这看起来不是 B 站链接，请粘贴 bilibili.com 或 b23.tv 链接。</p>
+      <p v-else-if="submitted" class="workspace-error" role="alert">{{ submitted }}</p>
 
       <!-- 视频预览卡 -->
       <div v-if="isBilibili" class="glass-panel mt-4 flex items-center gap-4 rounded-[14px] p-3">
-        <div class="h-[62px] w-[110px] shrink-0 rounded-lg bg-[linear-gradient(135deg,var(--color-rail)_0%,var(--color-rail-2)_55%,var(--color-accent)_100%)]" />
+        <span class="workspace-video-icon"><Link2 :size="23" /></span>
         <div class="min-w-0">
           <p class="truncate text-[14px] font-medium">已识别 B 站视频 · {{ videoId }}</p>
           <p class="mt-1 text-[11.5px] text-faint">解析后显示封面、标题、UP 主与时长</p>
@@ -434,14 +533,24 @@ function statusLabel(status: NoteSummary['status']) {
       </div>
 
       <!-- 最近笔记 -->
-      <section class="glass-panel mt-12 rounded-[16px] p-5">
-        <div class="flex items-baseline justify-between border-b border-line pb-3">
-          <h2 class="text-[17px] font-semibold tracking-[-0.01em]">最近笔记</h2>
+      <section class="glass-panel study-recent mt-7 rounded-[16px] p-5">
+        <div class="workspace-section-heading">
+          <div><h2>我的学习笔记</h2><p>知识有归处，温习有方向。</p></div>
           <div class="flex items-center gap-4">
             <button class="text-[12px] text-accent hover:underline" @click="newGroupOpen = true">＋ 新建分组</button>
             <RouterLink to="/library" class="text-[12px] text-muted hover:text-ink">查看全部 →</RouterLink>
           </div>
         </div>
+
+        <div class="workspace-library-toolbar">
+          <div class="workspace-filters" aria-label="笔记状态筛选">
+            <button v-for="filter in noteFilters" :key="filter.id" :aria-pressed="noteFilter === filter.id" :class="{ selected: noteFilter === filter.id }" @click="noteFilter = filter.id">{{ filter.label }}<span>{{ filter.count }}</span></button>
+          </div>
+          <label class="workspace-note-search"><Search :size="14" /><input v-model="noteQuery" placeholder="查找笔记…" aria-label="筛选笔记标题或作者" /><button v-if="noteQuery" aria-label="清空笔记搜索" @click="noteQuery = ''"><X :size="12" /></button></label>
+        </div>
+
+        <p v-if="library.error" class="workspace-error" role="alert">笔记暂时无法加载。{{ library.error }} <button class="underline" @click="library.load()">重试</button></p>
+        <div v-else-if="!library.loaded" class="workspace-note-loading" role="status"><LoaderCircle :size="18" class="workspace-spinner" /> 正在整理你的学习记录…</div>
 
         <div v-if="newGroupOpen" class="glass-panel mt-3 flex items-center gap-2 rounded-lg p-2">
           <Folder :size="15" class="text-accent" />
@@ -458,23 +567,32 @@ function statusLabel(status: NoteSummary['status']) {
         </div>
         <p v-if="newGroupError" class="mt-1 text-[11.5px] text-accent">{{ newGroupError }}</p>
 
-        <div v-for="group in library.sortedGroups" :key="group.id" class="mt-2">
-          <div class="flex cursor-pointer items-center gap-2 py-3" @click="library.toggleGroup(group.id)">
+        <div v-if="library.loaded && !library.notes.length && !library.error" class="study-empty workspace-empty">
+          <span class="workspace-empty-icon"><BookOpen :size="30" :stroke-width="1.3" /></span>
+          <h3>你的知识库，等第一颗种子</h3>
+          <p>导入一节感兴趣的课程，重点、脉络和灵感都会留在这里。</p>
+          <button @click="urlInput?.focus(); urlInput?.scrollIntoView({ behavior: 'smooth', block: 'center' })">开始第一节课 <ArrowRight :size="14" /></button>
+        </div>
+        <div v-else-if="library.loaded && library.notes.length && !filteredNotes.length" class="workspace-no-results"><Search :size="24" /><p>没有符合条件的笔记</p><button @click="noteQuery = ''; noteFilter = 'all'">清除筛选</button></div>
+
+        <div v-for="group in visibleGroups" :key="group.id" class="workspace-note-group mt-2">
+          <div class="flex items-center gap-2 py-3">
             <Folder :size="14" class="text-muted" />
             <input
               v-if="editingGroupId === group.id"
               v-model="editingGroupName"
               autofocus
-              class="h-7 w-[180px] rounded border border-accent bg-surface px-2 text-[13px] outline-none"
+              class="h-7 min-w-0 flex-1 rounded border border-accent bg-surface px-2 text-[13px] outline-none"
+              aria-label="分组名称"
               @click.stop
               @keydown.enter.stop="commitRename"
               @keydown.esc.stop="cancelRename"
               @blur="commitRename"
             />
-            <span v-else class="text-[13px] font-medium">{{ group.name }}</span>
-            <span class="text-[11px] text-faint">{{ library.notesOfGroup(group.id).length }} 篇</span>
-            <component :is="library.collapsed[group.id] ? ChevronRight : ChevronDown" :size="14" class="text-faint" />
-            <button class="ml-auto text-faint hover:text-ink" title="重命名分组" @click.stop="startRename(group)">
+            <button v-else class="min-w-0 flex-1 truncate text-left text-[13px] font-medium" :title="group.name" :aria-expanded="!library.collapsed[group.id]" @click="library.toggleGroup(group.id)">{{ group.name }}</button>
+            <span class="shrink-0 text-[11px] text-faint">{{ library.notesOfGroup(group.id).length }} 篇</span>
+            <component :is="library.collapsed[group.id] ? ChevronRight : ChevronDown" :size="14" class="shrink-0 text-faint" />
+            <button class="ml-auto shrink-0 text-faint hover:text-ink" title="重命名分组" @click.stop="startRename(group)">
               <Pencil :size="13" />
             </button>
             <button class="ml-1 flex h-6 w-6 items-center justify-center rounded border border-line text-faint hover:border-accent hover:text-accent" title="下载本组全部 Markdown" @click.stop="downloadGroup(group.id, group.name)">
@@ -484,16 +602,16 @@ function statusLabel(status: NoteSummary['status']) {
 
           <ul v-if="!library.collapsed[group.id]">
             <li
-              v-for="note in library.notesOfGroup(group.id)"
+              v-for="note in filteredNotes.filter(item => item.groupId === group.id)"
               :key="note.id"
               class="flex cursor-pointer items-center gap-4 border-b border-line-soft py-3 pl-5 hover:bg-surface-2"
               @click="openNote(note)"
             >
               <span class="w-[74px] shrink-0 text-[11.5px] text-faint">{{ note.createdAt }}</span>
-              <div class="min-w-0">
+              <button class="min-w-0 flex-1 text-left" @click.stop="openNote(note)">
                 <p class="truncate text-[14px] font-medium">{{ note.title }}</p>
                 <p class="mt-1 text-[11.5px] text-faint">{{ note.author }} · {{ note.duration }} · {{ note.style }}</p>
-              </div>
+              </button>
               <select
                 :value="note.groupId ?? ''"
                 class="ml-auto h-7 w-[96px] shrink-0 rounded border border-line bg-surface-2 px-1.5 text-[11px] text-muted outline-none"
@@ -516,7 +634,7 @@ function statusLabel(status: NoteSummary['status']) {
         </div>
 
         <!-- 未分组 -->
-        <div v-if="library.ungrouped.length" class="mt-2">
+        <div v-if="filteredUngrouped.length" class="workspace-note-group mt-2">
           <button class="flex w-full items-center gap-2 py-3 text-left" @click="library.toggleGroup('ungrouped')">
             <Folder :size="14" class="text-muted" />
             <span class="text-[13px] font-medium">未分组</span>
@@ -525,16 +643,16 @@ function statusLabel(status: NoteSummary['status']) {
           </button>
           <ul v-if="!library.collapsed.ungrouped">
             <li
-              v-for="note in library.ungrouped"
+              v-for="note in filteredUngrouped"
               :key="note.id"
               class="flex cursor-pointer items-center gap-4 border-b border-line-soft py-3 pl-5 hover:bg-surface-2"
               @click="openNote(note)"
             >
               <span class="w-[74px] shrink-0 text-[11.5px] text-faint">{{ note.createdAt }}</span>
-              <div class="min-w-0">
+              <button class="min-w-0 flex-1 text-left" @click.stop="openNote(note)">
                 <p class="truncate text-[14px] font-medium">{{ note.title }}</p>
                 <p class="mt-1 text-[11.5px] text-faint">{{ note.author }} · {{ note.duration }} · {{ note.style }}</p>
-              </div>
+              </button>
               <select
                 :value="note.groupId ?? ''"
                 class="ml-auto h-7 w-[96px] shrink-0 rounded border border-line bg-surface-2 px-1.5 text-[11px] text-muted outline-none"
@@ -556,6 +674,22 @@ function statusLabel(status: NoteSummary['status']) {
           </ul>
         </div>
       </section>
+      </div>
+      <aside class="study-aside">
+        <section class="workspace-setup">
+          <div class="aside-title"><span>学习准备</span><Settings2 :size="16" /></div>
+          <RouterLink to="/settings" class="workspace-setup-row"><span class="setup-indicator" :class="{ ready: !!selectedModel }"><Check v-if="selectedModel" :size="12" /><Settings2 v-else :size="12" /></span><div><b>笔记生成模型</b><p>{{ configLoading ? '正在读取配置…' : selectedModel || '配置模型后即可生成笔记' }}</p></div><ChevronRight :size="14" /></RouterLink>
+          <RouterLink to="/settings?tab=transcriber" class="workspace-setup-row"><span class="setup-indicator" :class="{ ready: transcriberReady }"><Check v-if="transcriberReady" :size="12" /><Settings2 v-else :size="12" /></span><div><b>音频转写引擎</b><p>{{ transcriberLabel }}</p><small v-if="transcriberReady === false">本地模型尚未下载，去设置下载</small></div><ChevronRight :size="14" /></RouterLink>
+          <p class="workspace-setup-hint">模型与引擎可随时在设置中调整。</p>
+        </section>
+        <section class="study-guide">
+          <div class="aside-title"><span>学习可以很简单</span><Sparkles :size="16" /></div>
+          <ol><li><span>01</span><div><b>收藏一节好课</b><p>粘贴链接，单集或合集都可以</p></div></li><li><span>02</span><div><b>梳理知识脉络</b><p>提炼重点，生成笔记与思维导图</p></div></li><li><span>03</span><div><b>把知识变成自己的</b><p>回看笔记，带着问题继续探索</p></div></li></ol>
+        </section>
+        <RouterLink to="/tasks" class="workspace-task-link"><span><Clock3 :size="18" /><b>查看生成任务</b></span><p>{{ activeCount ? `有 ${activeCount} 个任务正在等待或生成` : '在这里查看笔记生成进度' }}</p><ArrowUpRight :size="16" /></RouterLink>
+      </aside>
+      </div>
+      <footer class="study-footer"><Leaf :size="13" /> 老哔拾课 · 把知识拾起，把成长留下</footer>
     </div>
   </div>
 </template>

@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { Cpu, KeyRound, Palette, Info, Boxes, Plus, X, Check } from 'lucide-vue-next'
 import { api, type ApiProvider, type ApiModel } from '@/services/api'
 import { THEMES, applyTheme, getStoredTheme, type ThemeId } from '@/design/themes'
+import TranscriberSettings from '@/components/settings/TranscriberSettings.vue'
 
 const route = useRoute()
+const router = useRouter()
 const active = ref(String(route.query.tab || 'model'))
 const nav = [
   { key: 'model', label: '模型服务', icon: Boxes },
@@ -14,6 +16,10 @@ const nav = [
   { key: 'appearance', label: '外观', icon: Palette },
   { key: 'about', label: '关于', icon: Info },
 ]
+watch(() => route.query.tab, tab => {
+  if (nav.some(item => item.key === tab)) active.value = String(tab)
+})
+watch(active, tab => { void router.replace({ query: { ...route.query, tab } }) })
 
 const providers = ref<ApiProvider[]>([])
 const selectedId = ref('')
@@ -183,12 +189,12 @@ async function removeModel(model: ApiModel) {
 
 <template>
   <div class="h-full overflow-y-auto">
-    <div class="mx-auto w-[980px] pb-24 pt-10">
+    <div class="page-frame settings-page">
       <p class="text-[11.5px] uppercase tracking-[.16em] text-accent">Settings</p>
       <h1 class="mt-2 text-[30px] font-semibold tracking-[-0.025em]">设置</h1>
 
-      <div class="mt-8 flex gap-10">
-        <aside class="w-[170px] shrink-0">
+      <div class="settings-layout mt-8">
+        <aside class="settings-nav">
           <button
             v-for="item in nav"
             :key="item.key"
@@ -201,10 +207,10 @@ async function removeModel(model: ApiModel) {
           </button>
         </aside>
 
-        <section class="min-w-0 flex-1">
+        <section class="settings-panel min-w-0 flex-1">
           <!-- 模型服务：左供应商列表 + 右详情 -->
-          <div v-if="active === 'model'" class="flex gap-5">
-            <aside class="w-[220px] shrink-0">
+          <div v-if="active === 'model'" class="provider-layout">
+            <aside class="provider-nav">
               <button
                 class="flex h-9 w-full items-center justify-center gap-1.5 rounded-[9px] bg-accent text-[12.5px] text-white"
                 @click="addOpen = !addOpen"
@@ -303,21 +309,7 @@ async function removeModel(model: ApiModel) {
           </div>
 
           <!-- 转写引擎 -->
-          <div v-else-if="active === 'transcriber'" class="space-y-3">
-            <h2 class="text-[16px] font-semibold">转写引擎</h2>
-            <p class="text-[12px] text-muted">本地引擎需要先下载模型；在线引擎需要配置 API Key。</p>
-            <div class="rounded-[12px] border border-accent/40 bg-accent-soft/40 p-4">
-              <div class="flex items-center justify-between">
-                <p class="text-[14px] font-medium">faster-whisper</p>
-                <span class="rounded-full bg-surface px-2 py-0.5 text-[11px] text-accent">当前使用</span>
-              </div>
-              <p class="mt-1 text-[12px] text-muted">模型 base · cuda / float16 · 20 线程可用</p>
-            </div>
-            <div class="glass-card rounded-[12px] p-4">
-              <p class="text-[14px] font-medium">Groq</p>
-              <p class="mt-1 text-[12px] text-muted">whisper-large-v3-turbo · 在线转写</p>
-            </div>
-          </div>
+          <TranscriberSettings v-else-if="active === 'transcriber'" @open-models="active = 'model'" />
 
           <!-- B 站设置 -->
           <div v-else-if="active === 'bilibili'" class="space-y-3">

@@ -63,8 +63,8 @@ onMounted(load)
 
 <template>
   <div class="h-full overflow-y-auto">
-    <div class="mx-auto w-[980px] pb-24 pt-10">
-      <div class="flex items-end justify-between">
+    <div class="page-frame media-page">
+      <div class="page-heading flex items-end justify-between">
         <div>
           <p class="text-[11.5px] uppercase tracking-[.16em] text-accent">Media</p>
           <h1 class="mt-2 text-[30px] font-semibold tracking-[-0.025em]">视频区</h1>

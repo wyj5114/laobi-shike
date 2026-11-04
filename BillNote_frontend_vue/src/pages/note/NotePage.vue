@@ -192,12 +192,12 @@ watch(() => route.params.tab, tab => {
 
 <template>
   <div class="h-full overflow-y-auto">
-    <div class="glass-paper mx-auto mb-10 mt-6 w-[1000px] rounded-[18px] px-7 pb-24 pt-8">
+    <div class="note-paper glass-paper mx-auto">
       <div v-if="loading" class="flex h-[300px] items-center justify-center text-[13px] text-faint">正在加载笔记…</div>
       <div v-else-if="error" class="flex h-[300px] items-center justify-center text-[13px] text-accent">{{ error }}</div>
 
       <template v-else>
-        <div class="flex items-start gap-5 border-b border-line pb-5">
+        <div class="note-heading flex items-start gap-5 border-b border-line pb-5">
           <div
             class="relative h-[94px] w-[168px] shrink-0 overflow-hidden rounded-lg bg-[linear-gradient(135deg,var(--color-rail)_0%,var(--color-rail-2)_55%,var(--color-accent)_100%)] bg-cover bg-center"
             :style="note?.cover_url && !coverFailed ? { backgroundImage: `url(${note.cover_url})` } : {}"
@@ -231,14 +231,14 @@ watch(() => route.params.tab, tab => {
             </div>
           </div>
 
-          <div class="ml-auto flex items-start gap-2">
+          <div class="note-actions ml-auto flex items-start gap-2">
             <button class="h-[34px] rounded-md border border-line bg-surface px-3 text-[12.5px] hover:bg-surface-2" @click="exportMarkdown">
               <Share2 :size="13" class="mr-1 inline" /> 导出 Markdown
             </button>
             <button class="h-[34px] rounded-md border border-line bg-surface px-3 text-[12.5px] hover:bg-surface-2" @click="router.push(`/tasks/${note?.id}`)">
               <RotateCcw :size="13" class="mr-1 inline" /> 重新生成
             </button>
-            <button class="h-[34px] rounded-md bg-accent px-3 text-[12.5px] text-white hover:bg-[#1d4ed8]" @click="openOriginal">
+            <button class="h-[34px] rounded-md bg-accent px-3 text-[12.5px] text-white hover:opacity-90" @click="openOriginal">
               <ExternalLink :size="13" class="mr-1 inline" /> 打开原视频
             </button>
             <button
@@ -251,7 +251,7 @@ watch(() => route.params.tab, tab => {
           </div>
         </div>
 
-        <div class="flex gap-7 border-b border-line pt-4">
+        <div class="note-tabs flex gap-7 border-b border-line pt-4">
           <button
             v-for="tab in tabs"
             :key="tab.key"
@@ -265,8 +265,8 @@ watch(() => route.params.tab, tab => {
           </button>
         </div>
 
-        <div v-if="activeTab === 'note'" class="flex gap-11 pt-7">
-          <aside class="w-[180px] shrink-0">
+        <div v-if="activeTab === 'note'" class="note-reading-layout pt-7">
+          <aside class="note-outline">
             <h4 class="mb-3 text-[11px] uppercase tracking-[.14em] text-faint">目录</h4>
             <button
               v-for="heading in headings"
@@ -279,8 +279,8 @@ watch(() => route.params.tab, tab => {
             </button>
             <p v-if="!headings.length" class="border-l border-line py-1.5 pl-2.5 text-[12px] text-faint">正文</p>
           </aside>
-          <article v-if="markdown" class="article-body w-[720px] pb-20" v-html="html" />
-          <div v-else class="flex h-[300px] w-[720px] items-center justify-center text-[13px] text-faint">这篇笔记还没有正文</div>
+          <article v-if="markdown" class="article-body min-w-0 flex-1 pb-20" v-html="html" />
+          <div v-else class="flex h-[300px] min-w-0 flex-1 items-center justify-center text-[13px] text-faint">这篇笔记还没有正文</div>
         </div>
 
         <div v-else-if="activeTab === 'organized'" class="pt-7">

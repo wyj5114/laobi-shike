@@ -73,53 +73,9 @@ export function sortNotes(notes: NoteSummary[]): NoteSummary[] {
 
 export const useLibraryStore = defineStore('library', {
   state: (): LibraryState => ({
-    // 首次打开且后端无数据时保留演示内容；一旦后端有数据就以 API 为准。
-    groups: [
-      { id: 'kaoyan', name: '考研数学', order: 0 },
-      { id: 'network', name: '计算机网络', order: 1 },
-    ],
-    notes: [
-      {
-        id: 'demo',
-        title: '线性代数第 12 讲：特征值与特征向量',
-        author: '3BlueBrown',
-        duration: '42:18',
-        style: '详细风格',
-        status: 'done',
-        createdAt: '今天 14:20',
-        groupId: 'kaoyan',
-      },
-      {
-        id: 'prob-6',
-        title: '概率论第 6 讲：条件概率与贝叶斯公式',
-        author: '数学系的小林',
-        duration: '38:02',
-        style: '学术风格',
-        status: 'done',
-        createdAt: '今天 10:05',
-        groupId: 'kaoyan',
-      },
-      {
-        id: 'tcp',
-        title: '计算机网络：TCP 三次握手到底在做什么',
-        author: 'CS 自学指南',
-        duration: '26:40',
-        style: '教程风格',
-        status: 'running',
-        createdAt: '昨天',
-        groupId: 'network',
-      },
-      {
-        id: 'english-3',
-        title: '考研英语长难句拆解 · 第 3 期',
-        author: '英语老师阿哲',
-        duration: '51:12',
-        style: '精简风格',
-        status: 'done',
-        createdAt: '10 月 30 日',
-        groupId: null,
-      },
-    ],
+    // 从后端加载实际学习记录，空库展示首次学习引导。
+    groups: [],
+    notes: [],
     collapsed: {},
     loaded: false,
     loading: false,
@@ -153,10 +109,8 @@ export const useLibraryStore = defineStore('library', {
           items.push(...next.items)
           page += 1
         }
-        if (groups.length || items.length) {
-          this.groups = groups.map(g => ({ id: g.id, name: g.name, order: g.order }))
-          this.notes = items.map(toSummary)
-        }
+        this.groups = groups.map(g => ({ id: g.id, name: g.name, order: g.order }))
+        this.notes = items.map(toSummary)
         this.loaded = true
       } catch (error) {
         this.error = error instanceof Error ? error.message : String(error)

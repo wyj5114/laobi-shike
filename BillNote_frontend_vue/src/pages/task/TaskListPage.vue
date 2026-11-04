@@ -62,8 +62,8 @@ function toggleAll() {
 
 <template>
   <div class="h-full overflow-y-auto">
-    <div class="mx-auto w-[860px] pb-24 pt-10">
-      <div class="flex items-end justify-between">
+    <div class="page-frame task-list-page">
+      <div class="page-heading flex items-end justify-between">
         <div>
           <p class="text-[11.5px] uppercase tracking-[.16em] text-accent">Tasks</p>
           <h1 class="mt-2 text-[30px] font-semibold tracking-[-0.025em]">任务</h1>
@@ -99,7 +99,7 @@ function toggleAll() {
                 <p class="mt-1 text-[11.5px] text-faint">{{ note.createdAt }} · {{ note.author }}</p>
               </div>
               <span
-                class="ml-auto text-[11.5px]"
+                class="status-pill ml-auto text-[11.5px]"
                 :class="note.status === 'done' ? 'text-success' : note.status === 'running' ? 'text-accent' : note.status === 'failed' ? 'text-red-500' : 'text-faint'"
               >
                 {{ note.status === 'done' ? '已完成' : note.status === 'running' ? '进行中' : note.status === 'pending' ? '未开始' : '失败' }}

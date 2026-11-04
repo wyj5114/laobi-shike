@@ -35,7 +35,7 @@ function statusText(note: NoteSummary): string {
 
 <template>
   <div class="h-full overflow-y-auto">
-    <div class="mx-auto w-[860px] pb-24 pt-10">
+    <div class="page-frame search-page">
       <p class="text-[11.5px] uppercase tracking-[.16em] text-accent">Search</p>
       <h1 class="mt-2 text-[30px] font-semibold tracking-[-0.025em]">搜索笔记</h1>
       <p class="mt-2 text-[13px] text-muted">输入标题或 UP 主，找到对应笔记。</p>
@@ -71,7 +71,7 @@ function statusText(note: NoteSummary): string {
             <p class="mt-1 text-[11.5px] text-faint">{{ library.groupName(note.groupId) }} · {{ note.author }} · {{ note.createdAt }}</p>
           </div>
           <span
-            class="ml-auto shrink-0 text-[11.5px]"
+            class="status-pill ml-auto shrink-0 text-[11.5px]"
             :class="note.status === 'done' ? 'text-success' : note.status === 'running' ? 'text-accent' : note.status === 'failed' ? 'text-red-500' : 'text-faint'"
           >
             {{ statusText(note) }}

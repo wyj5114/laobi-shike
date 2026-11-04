@@ -1,0 +1,42 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# Node
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# Local data
+.env
+.env.*
+!.env.example
+backend/.env
+backend/data/
+backend/logs/
+backend/models/
+backend/note_results/
+backend/vector_db/
+backend/uploads/
+backend/static/screenshots/
+backend/*.db
+backend/*.db-shm
+backend/*.db-wal
+
+# Large local tool binaries: use GitHub Releases or Git LFS
+tools/torch/*.whl
+tools/ffmpeg/bin/*.exe
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
+*.tmp

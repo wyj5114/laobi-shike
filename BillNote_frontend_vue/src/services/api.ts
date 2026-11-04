@@ -25,6 +25,24 @@ export interface ApiGroup {
   count: number
 }
 
+export interface ApiGenerateNoteRequest {
+  video_url: string
+  platform: string
+  quality: string
+  model_name: string
+  provider_id: string
+  task_id?: string
+  style?: string
+  format?: string[]
+  screenshot?: boolean
+  link?: boolean
+  group_id?: string
+  extras?: string
+  video_understanding?: boolean
+  video_interval?: number
+  grid_size?: number[]
+}
+
 export interface ApiTranscriberConfig {
   transcriber_type: string
   whisper_model_size: string
@@ -257,18 +275,8 @@ export const api = {
   connectTest: (id: string, model?: string) =>
     request<boolean>('/connect_test', { method: 'POST', body: JSON.stringify({ id, model }) }),
 
-  generateNote: (payload: {
-    video_url: string
-    platform: string
-    quality: string
-    model_name: string
-    provider_id: string
-    style?: string
-    format?: string[]
-    screenshot?: boolean
-    link?: boolean
-    group_id?: string
-  }) => request<{ task_id: string }>('/generate_note', { method: 'POST', body: JSON.stringify(payload) }),
+  getTaskRetryRequest: (taskId: string) => request<ApiGenerateNoteRequest | null>(`/task_retry_request/${taskId}`),
+  generateNote: (payload: ApiGenerateNoteRequest) => request<{ task_id: string }>('/generate_note', { method: 'POST', body: JSON.stringify(payload) }),
   getCollection: (url: string) =>
     request<ApiCollection>(`/bilibili/collection?url=${encodeURIComponent(url)}`),
   generateBatch: (payload: {

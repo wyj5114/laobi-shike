@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { Cpu, KeyRound, Palette, Info, Boxes, Plus, X, Check } from 'lucide-vue-next'
 import { api, type ApiProvider, type ApiModel } from '@/services/api'
 import { THEMES, applyTheme, getStoredTheme, type ThemeId } from '@/design/themes'
 import TranscriberSettings from '@/components/settings/TranscriberSettings.vue'
 
 const route = useRoute()
+const router = useRouter()
 const active = ref(String(route.query.tab || 'model'))
 const nav = [
   { key: 'model', label: '模型服务', icon: Boxes },
@@ -15,6 +16,10 @@ const nav = [
   { key: 'appearance', label: '外观', icon: Palette },
   { key: 'about', label: '关于', icon: Info },
 ]
+watch(() => route.query.tab, tab => {
+  if (nav.some(item => item.key === tab)) active.value = String(tab)
+})
+watch(active, tab => { void router.replace({ query: { ...route.query, tab } }) })
 
 const providers = ref<ApiProvider[]>([])
 const selectedId = ref('')
@@ -184,12 +189,12 @@ async function removeModel(model: ApiModel) {
 
 <template>
   <div class="h-full overflow-y-auto">
-    <div class="mx-auto w-[980px] pb-24 pt-10">
+    <div class="page-frame settings-page">
       <p class="text-[11.5px] uppercase tracking-[.16em] text-accent">Settings</p>
       <h1 class="mt-2 text-[30px] font-semibold tracking-[-0.025em]">设置</h1>
 
-      <div class="mt-8 flex gap-10">
-        <aside class="w-[170px] shrink-0">
+      <div class="settings-layout mt-8">
+        <aside class="settings-nav">
           <button
             v-for="item in nav"
             :key="item.key"
@@ -202,10 +207,10 @@ async function removeModel(model: ApiModel) {
           </button>
         </aside>
 
-        <section class="min-w-0 flex-1">
+        <section class="settings-panel min-w-0 flex-1">
           <!-- 模型服务：左供应商列表 + 右详情 -->
-          <div v-if="active === 'model'" class="flex gap-5">
-            <aside class="w-[220px] shrink-0">
+          <div v-if="active === 'model'" class="provider-layout">
+            <aside class="provider-nav">
               <button
                 class="flex h-9 w-full items-center justify-center gap-1.5 rounded-[9px] bg-accent text-[12.5px] text-white"
                 @click="addOpen = !addOpen"

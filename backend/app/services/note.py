@@ -1,5 +1,6 @@
 import json
 import logging
+from app.services.task_recovery import NoSpeechError, run_with_retry
 import os
 from dataclasses import asdict
 from pathlib import Path
@@ -143,11 +144,11 @@ class NoteGenerator:
                 try:
                     data = json.loads(transcript_cache_file.read_text(encoding="utf-8"))
                     segments = [TranscriptSegment(**seg) for seg in data.get("segments", [])]
-                    transcript = TranscriptResult(
+                    transcript = self._validate_transcript(TranscriptResult(
                         language=data.get("language"),
                         full_text=data["full_text"],
                         segments=segments,
-                    )
+                    ))
                     logger.info(f"已从缓存加载转写结果，共 {len(segments)} 段")
                 except Exception as e:
                     logger.warning(f"加载转写缓存失败: {e}")
@@ -414,7 +415,13 @@ class NoteGenerator:
         if need_video:
             try:
                 logger.info("开始下载视频")
-                video_path_str = downloader.download_video(video_url)
+                video_path_str = run_with_retry(
+                    lambda: downloader.download_video(video_url),
+                    lambda attempt, delay: self._update_status(
+                        task_id, status_phase,
+                        message=f"视频下载连接暂时失败，{delay} 秒后自动重试（第 {attempt}/3 次）",
+                    ),
+                )
                 self.video_path = Path(video_path_str)
                 logger.info(f"视频下载完成：{self.video_path}")
 
@@ -437,11 +444,15 @@ class NoteGenerator:
         # 下载音频
         try:
             logger.info("开始下载音频")
-            audio = downloader.download(
-                video_url=video_url,
-                quality=quality,
-                output_dir=output_path,
-                need_video=need_video,
+            audio = run_with_retry(
+                lambda: downloader.download(
+                    video_url=video_url, quality=quality,
+                    output_dir=output_path, need_video=need_video,
+                ),
+                lambda attempt, delay: self._update_status(
+                    task_id, status_phase,
+                    message=f"下载连接暂时失败，{delay} 秒后自动重试（第 {attempt}/3 次）",
+                ),
             )
             audio_cache_file.write_text(json.dumps(asdict(audio), ensure_ascii=False, indent=2), encoding="utf-8")
             logger.info(f"音频下载并缓存成功 ({audio_cache_file})")
@@ -480,7 +491,7 @@ class NoteGenerator:
             try:
                 data = json.loads(transcript_cache_file.read_text(encoding="utf-8"))
                 segments = [TranscriptSegment(**seg) for seg in data.get("segments", [])]
-                return TranscriptResult(language=data.get("language"), full_text=data["full_text"], segments=segments)
+                return self._validate_transcript(TranscriptResult(language=data.get("language"), full_text=data["full_text"], segments=segments))
             except Exception as e:
                 logger.warning(f"加载转写缓存失败，将重新获取：{e}")
 
@@ -532,14 +543,21 @@ class NoteGenerator:
             try:
                 data = json.loads(transcript_cache_file.read_text(encoding="utf-8"))
                 segments = [TranscriptSegment(**seg) for seg in data.get("segments", [])]
-                return TranscriptResult(language=data["language"], full_text=data["full_text"], segments=segments)
+                return self._validate_transcript(TranscriptResult(language=data.get("language"), full_text=data["full_text"], segments=segments))
             except Exception as e:
                 logger.warning(f"加载转写缓存失败，将重新转写：{e}")
 
         # 调用转写器
         try:
             logger.info("开始转写音频")
-            transcript = self.transcriber.transcript(file_path=audio_file)
+            transcript = run_with_retry(
+                lambda: self.transcriber.transcript(file_path=audio_file),
+                lambda attempt, delay: self._update_status(
+                    task_id, status_phase,
+                    message=f"在线转写暂时失败，{delay} 秒后自动重试（第 {attempt}/3 次）",
+                ),
+            )
+            transcript = self._validate_transcript(transcript)
             transcript_cache_file.write_text(json.dumps(asdict(transcript), ensure_ascii=False, indent=2), encoding="utf-8")
             logger.info(f"转写并缓存成功 ({transcript_cache_file})")
             return transcript
@@ -547,6 +565,17 @@ class NoteGenerator:
             logger.error(f"音频转写失败：{exc}")
             self._handle_exception(task_id, exc)
             raise
+
+    @staticmethod
+    def _validate_transcript(transcript: TranscriptResult | None) -> TranscriptResult:
+        if transcript is None:
+            raise NoSpeechError("未识别到有效语音。请确认视频有人声，或在转写设置中切换引擎后重试。")
+        transcript.segments = [segment for segment in transcript.segments if segment.text.strip()]
+        if not transcript.segments and transcript.full_text.strip():
+            transcript.segments = [TranscriptSegment(start=0, end=0, text=transcript.full_text.strip())]
+        if not transcript.segments:
+            raise NoSpeechError("未识别到有效语音。视频可能没有人声或识别结果为空，请检查音频或切换转写引擎。")
+        return transcript
 
     def _summarize_text(
         self,
@@ -576,6 +605,7 @@ class NoteGenerator:
         :return: 生成的 Markdown 字符串
         """
         task_id = markdown_cache_file.stem
+        transcript = self._validate_transcript(transcript)
         self._update_status(task_id, TaskStatus.SUMMARIZING)
 
         source = GPTSource(

@@ -299,6 +299,9 @@ class UniversalGPT(GPT):
                 extras=source.extras
             )
 
+        if not chunks:
+            raise ValueError("没有可用于生成笔记的转写内容，请检查音频或切换转写引擎。")
+
         partials = []
         if checkpoint_key and source_signature:
             checkpoint = self._load_checkpoint(checkpoint_key, source_signature)

@@ -2,6 +2,7 @@
 import json
 import os
 import uuid
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import List, Optional
@@ -15,7 +16,7 @@ from app.db.video_task_dao import get_task_by_video
 from app.enmus.exception import NoteErrorEnum
 from app.enmus.note_enums import DownloadQuality
 from app.exceptions.note import NoteError
-from app.db.library_dao import upsert_note
+from app.db.library_dao import get_note, upsert_note
 from app.services.note import NoteGenerator, logger
 from app.services.task_serial_executor import task_serial_executor
 from app.services.task_status import update_status
@@ -48,7 +49,7 @@ class VideoRequest(BaseModel):
     provider_id: str
     task_id: Optional[str] = None
     format: Optional[list] = []
-    style: str = None
+    style: Optional[str] = None
     extras: Optional[str]=None
     group_id: Optional[str] = None
     video_understanding: Optional[bool] = False
@@ -107,6 +108,7 @@ class DirectExecutor:
 
 NOTE_OUTPUT_DIR = os.getenv("NOTE_OUTPUT_DIR", "note_results")
 UPLOAD_DIR = "uploads"
+_retry_submission_lock = threading.Lock()
 
 
 def save_note_to_file(task_id: str, note):
@@ -157,6 +159,18 @@ def run_note_task(task_id: str, video_url: str, platform: str, quality: Download
 
     if not model_name or not provider_id:
         raise HTTPException(status_code=400, detail="请选择模型和提供者")
+
+    request_path = Path(NOTE_OUTPUT_DIR) / f"{task_id}.request.json"
+    request_path.parent.mkdir(parents=True, exist_ok=True)
+    request_data = VideoRequest(
+        task_id=task_id, video_url=video_url, platform=platform, quality=quality,
+        link=link, screenshot=screenshot, model_name=model_name, provider_id=provider_id,
+        format=_format, style=style, extras=extras, video_understanding=video_understanding,
+        video_interval=video_interval, grid_size=grid_size,
+    )
+    temporary_path = request_path.with_suffix('.tmp')
+    temporary_path.write_text(request_data.model_dump_json(exclude={'prefetched_transcript'}), encoding='utf-8')
+    temporary_path.replace(request_path)
 
     def _execute_note_task():
         return NoteGenerator().generate(
@@ -247,14 +261,29 @@ def generate_note(data: VideoRequest, background_tasks: BackgroundTasks):
         #     )
         if data.task_id:
             # 如果传了task_id，说明是重试！
-            task_id = data.task_id
+            task_id = str(uuid.UUID(data.task_id))
+            with _retry_submission_lock:
+                existing = get_note(task_id)
+                status_path = Path(NOTE_OUTPUT_DIR) / f"{task_id}.status.json"
+                status = json.loads(status_path.read_text(encoding='utf-8')).get('status') if status_path.exists() else existing and existing.get('status')
+                if not existing or status != TaskStatus.FAILED.value:
+                    return R.error(msg="只有失败的任务可以重试；任务可能已经在队列中。", code=409)
+                request_path = Path(NOTE_OUTPUT_DIR) / f"{task_id}.request.json"
+                if request_path.exists():
+                    previous = json.loads(request_path.read_text(encoding='utf-8'))
+                    if previous['video_url'] != data.video_url:
+                        return R.error(msg="重试请使用原视频链接；其他视频请新建任务。", code=400)
+                elif existing.get('video_id') != video_id:
+                    return R.error(msg="视频链接与原任务不一致，请粘贴原视频分 P 链接。", code=400)
+                update_status(task_id, TaskStatus.PENDING, message="已重新加入队列，将复用有效的下载和转写缓存。")
             logger.info(f"重试模式，复用已有 task_id={task_id}")
         else:
             # 正常新建任务
             task_id = str(uuid.uuid4())
 
         # 统一先写入 PENDING，表示已进入队列等待执行
-        update_status(task_id, TaskStatus.PENDING)
+        if not data.task_id:
+            update_status(task_id, TaskStatus.PENDING)
 
         # 任务提交即入库：离开页面/刷新后，首页仍能看到「正在生成」的笔记
         if not data.task_id:
@@ -357,6 +386,14 @@ def generate_batch(data: BatchRequest, background_tasks: BackgroundTasks):
         "count": len(task_ids),
         "concurrency": data.batch_concurrency,
     })
+
+
+@router.get("/task_retry_request/{task_id}")
+def get_task_retry_request(task_id: uuid.UUID):
+    request_path = Path(NOTE_OUTPUT_DIR) / f"{task_id}.request.json"
+    if request_path.exists():
+        return R.success(json.loads(request_path.read_text(encoding='utf-8')))
+    return R.success(None)
 
 
 @router.get("/task_status/{task_id}")

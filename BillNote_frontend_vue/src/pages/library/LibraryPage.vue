@@ -55,8 +55,8 @@ async function downloadGroup(groupId: string | null, name: string) {
 
 <template>
   <div class="h-full overflow-y-auto">
-    <div class="mx-auto w-[920px] pb-24 pt-10">
-      <div class="flex items-end justify-between">
+    <div class="page-frame library-page">
+      <div class="page-heading flex items-end justify-between">
         <div>
           <p class="text-[11.5px] uppercase tracking-[.16em] text-accent">Library</p>
           <h1 class="mt-2 text-[30px] font-semibold tracking-[-0.025em]">笔记库</h1>
@@ -67,7 +67,7 @@ async function downloadGroup(groupId: string | null, name: string) {
         </div>
       </div>
 
-      <div v-for="group in pageGroups" :key="group.id" class="mt-7">
+      <div v-for="group in pageGroups" :key="group.id" class="library-group mt-7">
         <button class="flex w-full items-center gap-2 border-b border-line py-3 text-left" @click="library.toggleGroup(group.id)">
           <Folder :size="15" class="text-accent" />
           <span class="text-[13.5px] font-medium">{{ group.name }}</span>
@@ -82,7 +82,7 @@ async function downloadGroup(groupId: string | null, name: string) {
           <li
             v-for="note in group.notes"
             :key="note.id"
-            class="flex cursor-pointer items-center gap-5 border-b border-line-soft py-4 hover:bg-surface-2"
+            class="note-list-row flex cursor-pointer items-center gap-5 border-b border-line-soft py-4 hover:bg-surface-2"
             @click="router.push(note.status === 'done' ? `/notes/${note.id}` : `/tasks/${note.id}`)"
           >
             <span class="w-[86px] shrink-0 text-[11.5px] text-faint">{{ note.createdAt }}</span>
@@ -91,7 +91,7 @@ async function downloadGroup(groupId: string | null, name: string) {
               <p class="mt-1 text-[11.5px] text-faint">{{ note.author }} · {{ note.duration }} · {{ note.style }}</p>
             </div>
             <span
-              class="ml-auto text-[11.5px]"
+              class="status-pill ml-auto text-[11.5px]"
               :class="note.status === 'done' ? 'text-success' : note.status === 'running' ? 'text-accent' : note.status === 'failed' ? 'text-red-500' : 'text-faint'"
             >
               {{ note.status === 'done' ? '已完成' : note.status === 'running' ? '进行中' : note.status === 'pending' ? '未开始' : '失败' }}
@@ -100,7 +100,7 @@ async function downloadGroup(groupId: string | null, name: string) {
         </ul>
       </div>
 
-      <div v-if="pageUngrouped.length" class="mt-7">
+      <div v-if="pageUngrouped.length" class="library-group mt-7">
         <button class="flex w-full items-center gap-2 border-b border-line py-3 text-left" @click="library.toggleGroup('ungrouped')">
           <Folder :size="15" class="text-muted" />
           <span class="text-[13.5px] font-medium">未分组</span>
@@ -111,7 +111,7 @@ async function downloadGroup(groupId: string | null, name: string) {
           <li
             v-for="note in pageUngrouped"
             :key="note.id"
-            class="flex cursor-pointer items-center gap-5 border-b border-line-soft py-4 hover:bg-surface-2"
+            class="note-list-row flex cursor-pointer items-center gap-5 border-b border-line-soft py-4 hover:bg-surface-2"
             @click="router.push(note.status === 'done' ? `/notes/${note.id}` : `/tasks/${note.id}`)"
           >
             <span class="w-[86px] shrink-0 text-[11.5px] text-faint">{{ note.createdAt }}</span>
@@ -120,7 +120,7 @@ async function downloadGroup(groupId: string | null, name: string) {
               <p class="mt-1 text-[11.5px] text-faint">{{ note.author }} · {{ note.duration }} · {{ note.style }}</p>
             </div>
             <span
-              class="ml-auto text-[11.5px]"
+              class="status-pill ml-auto text-[11.5px]"
               :class="note.status === 'done' ? 'text-success' : note.status === 'running' ? 'text-accent' : note.status === 'failed' ? 'text-red-500' : 'text-faint'"
             >
               {{ note.status === 'done' ? '已完成' : note.status === 'running' ? '进行中' : note.status === 'pending' ? '未开始' : '失败' }}

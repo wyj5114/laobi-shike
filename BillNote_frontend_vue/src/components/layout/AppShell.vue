@@ -4,11 +4,11 @@ import TopBar from './TopBar.vue'
 </script>
 
 <template>
-  <div class="flex h-screen overflow-hidden bg-transparent text-ink">
+  <div class="app-shell flex h-screen overflow-hidden text-ink">
     <RailNav />
-    <div class="flex min-w-0 flex-1 flex-col bg-surface/35">
+    <div class="app-content flex min-w-0 flex-1 flex-col">
       <TopBar />
-      <main class="min-h-0 flex-1 overflow-hidden">
+      <main class="app-main min-h-0 flex-1 overflow-hidden">
         <slot />
       </main>
     </div>

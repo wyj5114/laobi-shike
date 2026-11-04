@@ -1,46 +1,6 @@
 import MarkdownIt from 'markdown-it'
-import katex from 'katex'
+import { mathPlugin } from './math'
 import 'katex/dist/katex.min.css'
-
-function mathPlugin(md: MarkdownIt) {
-  md.inline.ruler.before('escape', 'math_inline', (state, silent) => {
-    const start = state.pos
-    if (state.src.charCodeAt(start) !== 0x24) return false
-    const isBlock = state.src.charCodeAt(start + 1) === 0x24
-    const open = isBlock ? 2 : 1
-    let end = start + open
-    const closer = isBlock ? '$$' : '$'
-    while ((end = state.src.indexOf(closer, end)) !== -1) {
-      if (state.src.charCodeAt(end - 1) !== 0x5c) break
-      end += open
-    }
-    if (end === -1) return false
-    const content = state.src.slice(start + open, end).trim()
-    if (!content) return false
-    if (!silent) {
-      const token = state.push(isBlock ? 'math_block_inline' : 'math_inline', 'math', 0)
-      token.content = content
-      token.markup = closer
-    }
-    state.pos = end + open
-    return true
-  })
-
-  md.renderer.rules.math_inline = (tokens, idx) => {
-    try {
-      return katex.renderToString(tokens[idx].content, { throwOnError: false })
-    } catch {
-      return tokens[idx].content
-    }
-  }
-  md.renderer.rules.math_block_inline = (tokens, idx) => {
-    try {
-      return katex.renderToString(tokens[idx].content, { throwOnError: false, displayMode: true })
-    } catch {
-      return tokens[idx].content
-    }
-  }
-}
 
 function headingPlugin(md: MarkdownIt) {
   md.renderer.rules.heading_open = (tokens, idx, options, env, self) => {

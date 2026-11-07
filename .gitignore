@@ -40,3 +40,10 @@ Thumbs.db
 .vscode/
 *.log
 *.tmp
+# 本机私有（腾讯会议解析功能）
+_edge_profile/
+_pw_tmp/
+_local_key.txt
+_gh_token*.txt
+_*.lock
+腾讯会议解析/

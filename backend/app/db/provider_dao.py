@@ -3,6 +3,7 @@ import os
 import sys
 from app.db.models.providers import Provider
 from app.utils.logger import get_logger
+from app.utils.net_helper import is_local_base_url
 from app.db.engine import get_engine, Base, get_db
 
 logger = get_logger(__name__)
@@ -16,10 +17,28 @@ def get_builtin_providers_path():
     return os.path.join(base_path, 'builtin_providers.json')
 
 
+def normalize_local_provider_keys(db):
+    """本机推理服务（Ollama 等）不校验 API Key，但前端「有 key 才可用」的老逻辑
+    会把它们当成未配置。启动时把空 key 补成占位符 "ollama"，保证升级后已有数据库
+    也能直接选模型。"""
+    changed = 0
+    try:
+        for p in db.query(Provider).all():
+            if is_local_base_url(p.base_url) and not (p.api_key or "").strip():
+                p.api_key = "ollama"
+                changed += 1
+        if changed:
+            db.commit()
+            logger.info(f"已为 {changed} 个本机推理服务补全占位 API Key")
+    except Exception as e:
+        logger.warning(f"补全本机推理服务 API Key 失败: {e}")
+
+
 def seed_default_providers():
     db = next(get_db())
     try:
         if db.query(Provider).count() > 0:
+            normalize_local_provider_keys(db)
             logger.info("Providers already exist, skipping seed.")
             return
 
@@ -42,6 +61,7 @@ def seed_default_providers():
                 enabled=p.get('enabled', 1)
             ))
         db.commit()
+        normalize_local_provider_keys(db)
         logger.info("Default providers seeded successfully.")
     except Exception as e:
         logger.error(f"Failed to seed default providers: {e}")

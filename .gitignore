@@ -1,4 +1,4 @@
-﻿# Python
+# Python
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -6,6 +6,10 @@ __pycache__/
 venv/
 .pytest_cache/
 .mypy_cache/
+
+# 本地启动器缓存 / 日志
+logs/
+.cache/
 
 # Node
 node_modules/

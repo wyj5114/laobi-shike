@@ -30,6 +30,20 @@ class BilibiliDownloader(Downloader, ABC):
         self._cookie_mgr = CookieConfigManager()
         self._cookie = self._cookie_mgr.get('bilibili')
         self._cookiefile = self._write_netscape_cookie_file()
+        # 可选：直接从本机浏览器读 B 站登录态，省掉手动复制 SESSDATA。
+        # 取值：edge / chrome / firefox / brave / chromium ...
+        self._cookies_from_browser = (
+            os.getenv("BILIBILI_COOKIES_FROM_BROWSER") or ""
+        ).strip().lower() or None
+
+    def _apply_auth(self, ydl_opts: dict) -> dict:
+        """把 B 站登录态塞进 yt-dlp 参数：优先手动 Cookie，其次浏览器 Cookie。"""
+        if self._cookiefile:
+            ydl_opts['cookiefile'] = self._cookiefile
+        elif self._cookies_from_browser:
+            ydl_opts['cookiesfrombrowser'] = (self._cookies_from_browser,)
+            logger.info("使用浏览器 Cookie 读取 B 站登录态: %s", self._cookies_from_browser)
+        return ydl_opts
 
     def _write_netscape_cookie_file(self) -> Optional[str]:
         """将 Cookie 写入 Netscape 格式临时文件，返回文件路径（供 yt-dlp cookiefile 使用）"""
@@ -78,8 +92,7 @@ class BilibiliDownloader(Downloader, ABC):
             'noplaylist': True,
             'quiet': False,
         }
-        if self._cookiefile:
-            ydl_opts['cookiefile'] = self._cookiefile
+        self._apply_auth(ydl_opts)
         if skip_download:
             ydl_opts['skip_download'] = True
             ydl_opts['ignore_no_formats_error'] = True
@@ -145,8 +158,7 @@ class BilibiliDownloader(Downloader, ABC):
             'quiet': False,
             'merge_output_format': 'mp4',  # 确保合并成 mp4
         }
-        if self._cookiefile:
-            ydl_opts['cookiefile'] = self._cookiefile
+        self._apply_auth(ydl_opts)
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_url, download=True)
@@ -209,9 +221,9 @@ class BilibiliDownloader(Downloader, ABC):
             'quiet': True,
         }
 
-        # 通过 CookieConfigManager 注入 B站 Cookie（Netscape cookiefile）
-        if self._cookiefile:
-            ydl_opts['cookiefile'] = self._cookiefile
+        # 通过 CookieConfigManager 注入 B站 Cookie（Netscape cookiefile）或浏览器 Cookie
+        self._apply_auth(ydl_opts)
+        if self._cookiefile or self._cookies_from_browser:
             ydl_opts['http_headers'] = {'Referer': 'https://www.bilibili.com'}
 
         try:

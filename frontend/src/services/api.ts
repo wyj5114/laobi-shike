@@ -74,6 +74,26 @@ export interface ApiModel {
   name?: string
 }
 
+export interface ApiTranscriberConfig {
+  transcriber_type: string
+  whisper_model_size: string
+  available_types: Array<{ value: string; label: string }>
+  whisper_model_sizes: string[]
+  mlx_whisper_available?: boolean
+}
+
+export interface ApiTranscriberStatus {
+  whisper: Array<{
+    model_size: string
+    downloaded: boolean
+    downloading: boolean
+    failed: boolean
+    error?: string
+  }>
+  mlx_whisper?: unknown[]
+  mlx_available?: boolean
+}
+
 export interface TaskStatus {
   status: string
   message?: string
@@ -234,6 +254,21 @@ export const api = {
     request<unknown>('/update_provider', { method: 'POST', body: JSON.stringify(payload) }),
   connectTest: (id: string, model?: string) =>
     request<boolean>('/connect_test', { method: 'POST', body: JSON.stringify({ id, model }) }),
+
+  getTranscriberConfig: () => request<ApiTranscriberConfig>('/transcriber_config'),
+  updateTranscriberConfig: (payload: { transcriber_type: string; whisper_model_size?: string }) =>
+    request<{ transcriber_type: string; whisper_model_size: string }>('/transcriber_config', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  getTranscriberStatus: () => request<ApiTranscriberStatus>('/transcriber_models_status'),
+  downloadTranscriberModel: (payload: { transcriber_type: string; model_size: string }) =>
+    request<unknown>('/transcriber_download', { method: 'POST', body: JSON.stringify(payload) }),
+
+  getCookie: (platform: string) =>
+    request<{ platform: string; cookie: string } | null>(`/get_downloader_cookie/${platform}`),
+  saveCookie: (platform: string, cookie: string) =>
+    request<unknown>('/update_downloader_cookie', { method: 'POST', body: JSON.stringify({ platform, cookie }) }),
 
   generateNote: (payload: {
     video_url: string

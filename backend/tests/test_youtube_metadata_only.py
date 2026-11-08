@@ -20,10 +20,13 @@ These tests pin the two guarantees of that path:
 import importlib.util
 import pathlib
 import sys
+import tempfile
 import types
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+# 跨平台临时目录：Windows 上没有 /tmp，写死会让这组用例直接 PermissionError
+OUT = tempfile.gettempdir()
 MODULE_PATH = ROOT / "app" / "downloaders" / "youtube_downloader.py"
 
 
@@ -41,7 +44,7 @@ def _stub(name, **attrs):
 
 class _Downloader:
     def __init__(self):
-        self.cache_data = "/tmp"
+        self.cache_data = OUT
 
 
 class _AudioDownloadResult:
@@ -71,7 +74,7 @@ def _load_youtube_downloader():
             "ProxyConfigManager", (), {"get_proxy_url": lambda self: None}
         ),
     )
-    _stub("app.utils.path_helper", get_data_dir=lambda: "/tmp")
+    _stub("app.utils.path_helper", get_data_dir=lambda: OUT)
     _stub("app.utils.url_parser", extract_video_id=lambda url, platform: "vid")
 
     spec = importlib.util.spec_from_file_location("youtube_downloader", MODULE_PATH)
@@ -127,7 +130,7 @@ class YoutubeMetadataOnlyTest(unittest.TestCase):
     def test_skip_download_tolerates_missing_formats(self):
         self.module.YoutubeDownloader().download(
             "https://www.youtube.com/watch?v=CJ4ndXv3CkY",
-            output_dir="/tmp",
+            output_dir=OUT,
             skip_download=True,
         )
         self.assertTrue(_FakeYoutubeDL.captured_opts.get("ignore_no_formats_error"))
@@ -135,7 +138,7 @@ class YoutubeMetadataOnlyTest(unittest.TestCase):
     def test_missing_ext_falls_back_to_m4a(self):
         result = self.module.YoutubeDownloader().download(
             "https://www.youtube.com/watch?v=CJ4ndXv3CkY",
-            output_dir="/tmp",
+            output_dir=OUT,
             skip_download=True,
         )
         self.assertTrue(result.file_path.endswith(".m4a"), result.file_path)
@@ -144,7 +147,7 @@ class YoutubeMetadataOnlyTest(unittest.TestCase):
     def test_full_download_still_selects_an_audio_format(self):
         self.module.YoutubeDownloader().download(
             "https://www.youtube.com/watch?v=CJ4ndXv3CkY",
-            output_dir="/tmp",
+            output_dir=OUT,
         )
         opts = _FakeYoutubeDL.captured_opts
         self.assertIn("bestaudio", opts.get("format", ""))

@@ -56,12 +56,22 @@ onUnmounted(() => {
   if (collectionTimer) window.clearTimeout(collectionTimer)
 })
 
+function isLocalProvider(p: ApiProvider): boolean {
+  // 本机 Ollama / LM Studio 不校验 key，旧逻辑要求 api_key 非空会把它们整个过滤掉
+  try {
+    const host = new URL(p.base_url).hostname.toLowerCase()
+    return ['localhost', '127.0.0.1', '0.0.0.0', '::1', 'host.docker.internal'].includes(host)
+  } catch {
+    return false
+  }
+}
+
 async function loadModelConfig() {
   try {
     providers.value = await api.listProviders()
-    const usable = providers.value.find(p => p.enabled && p.api_key)
+    const usable = providers.value.find(p => p.enabled && (p.api_key || isLocalProvider(p)))
     if (!usable) {
-      configError.value = '还没有配置模型 API Key'
+      configError.value = '还没有可用的模型供应商：请到「设置 → 模型服务」填写 API Key，或启动本机的 Ollama'
       return
     }
     const saved = await api.listEnabledModels(usable.id)
@@ -178,11 +188,22 @@ async function generateCollection() {
   try {
     let groupId = batchGroupId.value || null
     if (!groupId) {
-      const name = collection.value.title.slice(0, 30) || '课程合集'
+      // 后端分组名上限 60 字符；合集标题经常更长，自动建组必须先截断，
+      // 否则会直接抛「分组名最多 20 个字符」把整批任务憋死（用户根本没手动起名）。
+      const name = (collection.value.title || '课程合集').trim().slice(0, 60) || '课程合集'
       const existing = library.groups.find(group => group.name === name)
-      groupId = existing?.id ?? (await api.createGroup(name)).id
-      batchGroupId.value = groupId
-      await library.load()
+      if (existing) {
+        groupId = existing.id
+      } else {
+        try {
+          groupId = (await api.createGroup(name)).id
+          batchGroupId.value = groupId
+          await library.load()
+        } catch (error) {
+          groupId = null
+          batchProgress.value = `自动建分组失败（${error instanceof Error ? error.message : error}），继续按未分组生成`
+        }
+      }
     }
     let done = 0
     const result = await api.generateBatch({
@@ -241,7 +262,9 @@ async function submit() {
 async function createGroup() {
   const group = await library.createGroup(newGroupName.value)
   if (!group) {
-    newGroupError.value = newGroupName.value.trim() ? '分组创建失败（可能重名）' : '请输入分组名'
+    newGroupError.value = newGroupName.value.trim()
+      ? (library.error || '分组创建失败（可能重名）')
+      : '请输入分组名'
     return
   }
   newGroupName.value = ''
@@ -419,7 +442,7 @@ function statusLabel(status: NoteSummary['status']) {
             <option :value="3">并发 3</option>
           </select>
           <select v-model="batchGroupId" class="h-8 min-w-0 flex-1 rounded-[7px] border border-line bg-surface px-2 text-[11.5px] text-muted outline-none">
-            <option value="">自动创建分组「{{ collection.title.slice(0, 20) }}」</option>
+            <option value="">自动创建分组「{{ (collection.title || '课程合集').slice(0, 60) }}」</option>
             <option v-for="group in library.sortedGroups" :key="group.id" :value="group.id">{{ group.name }}</option>
           </select>
           <button
@@ -448,8 +471,9 @@ function statusLabel(status: NoteSummary['status']) {
           <input
             v-model="newGroupName"
             autofocus
+            maxlength="60"
             class="h-8 flex-1 bg-transparent text-[13px] outline-none placeholder:text-faint"
-            placeholder="分组名，例如：考研数学"
+            placeholder="分组名，例如：考研数学（最多 60 字）"
             @keydown.enter="createGroup"
             @keydown.esc="newGroupOpen = false"
           />
@@ -465,6 +489,7 @@ function statusLabel(status: NoteSummary['status']) {
               v-if="editingGroupId === group.id"
               v-model="editingGroupName"
               autofocus
+              maxlength="60"
               class="h-7 w-[180px] rounded border border-accent bg-surface px-2 text-[13px] outline-none"
               @click.stop
               @keydown.enter.stop="commitRename"

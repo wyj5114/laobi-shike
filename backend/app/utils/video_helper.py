@@ -7,11 +7,22 @@ import os
 import uuid
 load_dotenv()
 api_path = os.getenv("API_BASE_URL", "http://localhost")
-BACKEND_PORT= os.getenv("BACKEND_PORT", 8483)
+BACKEND_PORT = os.getenv("BACKEND_PORT", 8484)
 
 BACKEND_BASE_URL = f"{api_path}:{BACKEND_PORT}"
 
 from typing import Optional
+
+
+def _ffmpeg_exe() -> str:
+    """优先使用 .env 里配置的 FFMPEG_BIN_PATH，避免打包版 / 未加 PATH 时找不到 ffmpeg。"""
+    try:
+        from ffmpeg_helper import get_ffmpeg_bin
+        return get_ffmpeg_bin()
+    except Exception:
+        return "ffmpeg"
+
+
 def generate_screenshot(video_path: str, output_dir: str, timestamp: int, index: int) -> str:
     """
     使用 ffmpeg 生成截图，返回生成图片路径
@@ -23,7 +34,7 @@ def generate_screenshot(video_path: str, output_dir: str, timestamp: int, index:
     output_path = output_dir / filename
 
     command = [
-        "ffmpeg",
+        _ffmpeg_exe(),
         "-ss", str(timestamp),
         "-i", str(video_path),
         "-frames:v", "1",

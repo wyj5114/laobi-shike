@@ -1,19 +1,19 @@
 @echo off
+chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
 
-set "PY=%LOCALAPPDATA%\Programs\Python\bili-venv\Scripts\python.exe"
-if not exist "%PY%" set "PY=python"
+where pwsh >nul 2>nul
+if %errorlevel%==0 (
+    pwsh -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start_local.ps1" %*
+) else (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start_local.ps1" %*
+)
 
-set "BACKEND_PORT=8484"
-set "BACKEND_HOST=127.0.0.1"
-set "VITE_BACKEND_ORIGIN=http://127.0.0.1:8484"
-set "VITE_FRONTEND_PORT=3017"
-
-echo Starting BÕ¾Ê°¿Î ...
-start "Shike Backend :8484" /D "%CD%\backend" cmd /k "%PY% main.py"
-start "Shike UI :3017" /D "%CD%\frontend" cmd /k "npm run dev"
-
-timeout /t 8 /nobreak >nul
-start "" "http://localhost:3017"
+if errorlevel 1 (
+    echo.
+    echo Startup failed. Check logs\backend.log or logs\frontend.log.
+    echo If you need help, copy the messages above.
+    pause
+)
 endlocal

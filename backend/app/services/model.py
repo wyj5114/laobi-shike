@@ -9,6 +9,7 @@ from app.gpt.provider.OpenAI_compatible_provider import OpenAICompatibleProvider
 from app.models.model_config import ModelConfig
 from app.services.provider import ProviderService
 from app.utils.logger import get_logger
+from app.utils.net_helper import is_local_base_url
 
 logger=get_logger(__name__)
 class ModelService:
@@ -148,7 +149,7 @@ class ModelService:
                 code=ProviderErrorEnum.NOT_FOUND.code,
                 message=ProviderErrorEnum.NOT_FOUND.message,
             )
-        if not provider.get('api_key'):
+        if not provider.get('api_key') and not is_local_base_url(provider.get('base_url')):
             raise ProviderError(
                 code=ProviderErrorEnum.NOT_FOUND.code,
                 message=ProviderErrorEnum.NOT_FOUND.message,

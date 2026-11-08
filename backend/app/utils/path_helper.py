@@ -1,4 +1,4 @@
-﻿import os
+import os
 import sys
 from pathlib import Path
 
@@ -7,11 +7,11 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")
 
 def get_data_dir():
     if getattr(sys, 'frozen', False):
-
+        # 打包后：<exe 所在目录>/data
         base_dir = os.path.dirname(sys.executable)
     else:
-
-        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../data"))
+        # 源码运行：backend/（此前这里多拼了一层 data，实际落盘到 backend/data/data）
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 
     data_path = os.path.join(base_dir, "data")
     os.makedirs(data_path, exist_ok=True)

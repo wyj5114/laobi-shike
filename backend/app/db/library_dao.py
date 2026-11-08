@@ -17,6 +17,19 @@ logger = get_logger(__name__)
 
 NOTE_OUTPUT_DIR = Path(os.getenv("NOTE_OUTPUT_DIR", "note_results"))
 
+# 分组名长度上限。原来 20 太紧：B 站合集/课程标题自动建组时经常直接超限，
+# 用户「还没自己起名」就被拒绝。放宽到 60，同时在前后端都做截断/校验。
+GROUP_NAME_MAX = 60
+
+
+def _validate_group_name(name: str) -> str:
+    name = (name or "").strip()
+    if not name:
+        raise ValueError("分组名不能为空")
+    if len(name) > GROUP_NAME_MAX:
+        raise ValueError(f"分组名最多 {GROUP_NAME_MAX} 个字符")
+    return name
+
 
 def _iso(value) -> Optional[str]:
     if not value:
@@ -75,11 +88,7 @@ def existing_video_ids() -> set:
 
 
 def create_group(name: str) -> Dict[str, Any]:
-    name = (name or "").strip()
-    if not name:
-        raise ValueError("分组名不能为空")
-    if len(name) > 20:
-        raise ValueError("分组名最多 20 个字符")
+    name = _validate_group_name(name)
 
     db = SessionLocal()
     try:
@@ -102,9 +111,7 @@ def update_group(group_id: str, name: Optional[str] = None, order: Optional[int]
         if not group:
             raise LookupError("分组不存在")
         if name is not None:
-            name = name.strip()
-            if not name:
-                raise ValueError("分组名不能为空")
+            name = _validate_group_name(name)
             duplicate = db.query(NoteGroup).filter(NoteGroup.name == name, NoteGroup.id != group_id).first()
             if duplicate:
                 raise ValueError("已有同名分组")

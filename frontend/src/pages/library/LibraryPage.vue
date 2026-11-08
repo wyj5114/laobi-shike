@@ -68,7 +68,16 @@ async function downloadGroup(groupId: string | null, name: string) {
       </div>
 
       <div v-for="group in pageGroups" :key="group.id" class="mt-7">
-        <button class="flex w-full items-center gap-2 border-b border-line py-3 text-left" @click="library.toggleGroup(group.id)">
+        <!-- 外层用 div[role=button]：里面还要放「下载整组」按钮，button 套 button 是非法 HTML，
+             会导致点击内层按钮时同时触发折叠、并触发 Vue hydration 警告 -->
+        <div
+          role="button"
+          tabindex="0"
+          class="flex w-full cursor-pointer items-center gap-2 border-b border-line py-3 text-left"
+          @click="library.toggleGroup(group.id)"
+          @keydown.enter.prevent="library.toggleGroup(group.id)"
+          @keydown.space.prevent="library.toggleGroup(group.id)"
+        >
           <Folder :size="15" class="text-accent" />
           <span class="text-[13.5px] font-medium">{{ group.name }}</span>
           <span class="text-[11.5px] text-faint">{{ notesOf(group.id).length }} 篇</span>
@@ -76,7 +85,7 @@ async function downloadGroup(groupId: string | null, name: string) {
           <button class="flex h-6 w-6 items-center justify-center rounded border border-line text-faint hover:border-accent hover:text-accent" title="下载本组全部 Markdown" @click.stop="downloadGroup(group.id, group.name)">
             <FileDown :size="12" />
           </button>
-        </button>
+        </div>
 
         <ul v-if="!library.collapsed[group.id]">
           <li

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { Cpu, KeyRound, Palette, Info, Boxes, Plus, X, Check } from 'lucide-vue-next'
-import { api, type ApiProvider, type ApiModel } from '@/services/api'
+import { api, type ApiProvider, type ApiModel, type ApiTranscriberConfig, type ApiTranscriberStatus } from '@/services/api'
 import { THEMES, applyTheme, getStoredTheme, type ThemeId } from '@/design/themes'
 
 const route = useRoute()
@@ -35,15 +35,106 @@ const filteredModels = computed(() => {
 })
 
 const cookie = ref('')
+const cookieMsg = ref('')
 const fontSize = ref('16.5')
 const activeTheme = ref<ThemeId>(getStoredTheme())
+
+// ---- 转写引擎 ----
+const txConfig = ref<ApiTranscriberConfig | null>(null)
+const txType = ref('fast-whisper')
+const txSize = ref('base')
+const txStatus = ref<ApiTranscriberStatus['whisper']>([])
+const txSaving = ref(false)
+const txMsg = ref('')
+let txTimer: number | undefined
+
+function statusOf(size: string) {
+  return txStatus.value.find(item => item.model_size === size)
+}
+
+async function loadTranscriber() {
+  try {
+    const cfg = await api.getTranscriberConfig()
+    txConfig.value = cfg
+    txType.value = cfg.transcriber_type
+    txSize.value = cfg.whisper_model_size
+    await refreshTranscriberStatus()
+  } catch (error) {
+    txMsg.value = error instanceof Error ? error.message : String(error)
+  }
+}
+
+async function refreshTranscriberStatus() {
+  try {
+    const status = await api.getTranscriberStatus()
+    txStatus.value = status.whisper ?? []
+  } catch {
+    /* 状态接口失败不影响主流程 */
+  }
+}
+
+async function saveTranscriber() {
+  txSaving.value = true
+  try {
+    const res = await api.updateTranscriberConfig({ transcriber_type: txType.value, whisper_model_size: txSize.value })
+    txMsg.value = `已保存：${res.transcriber_type} · ${res.whisper_model_size}`
+    await refreshTranscriberStatus()
+  } catch (error) {
+    txMsg.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    txSaving.value = false
+  }
+}
+
+async function downloadTranscriberModel(size: string) {
+  txMsg.value = `开始下载 ${size}…`
+  try {
+    await api.downloadTranscriberModel({ transcriber_type: 'fast-whisper', model_size: size })
+    if (txTimer) window.clearInterval(txTimer)
+    txTimer = window.setInterval(async () => {
+      await refreshTranscriberStatus()
+      const item = statusOf(size)
+      if (!item?.downloading) {
+        if (txTimer) window.clearInterval(txTimer)
+        txTimer = undefined
+        txMsg.value = item?.downloaded ? `${size} 下载完成` : `${size} 下载失败${item?.error ? '：' + item.error : ''}`
+      }
+    }, 2000)
+  } catch (error) {
+    txMsg.value = error instanceof Error ? error.message : String(error)
+  }
+}
+
+async function loadCookie() {
+  try {
+    const data = await api.getCookie('bilibili')
+    cookie.value = data?.cookie ?? ''
+  } catch {
+    /* 没配置过 Cookie 时接口返回空，忽略 */
+  }
+}
+
+async function saveCookie() {
+  try {
+    await api.saveCookie('bilibili', cookie.value.trim())
+    cookieMsg.value = cookie.value.trim() ? 'Cookie 已保存到本机' : 'Cookie 已清空'
+  } catch (error) {
+    cookieMsg.value = error instanceof Error ? error.message : String(error)
+  }
+}
+
+onMounted(async () => {
+  await Promise.all([loadProviders(), loadTranscriber(), loadCookie()])
+})
+
+onUnmounted(() => {
+  if (txTimer) window.clearInterval(txTimer)
+})
 
 function chooseTheme(id: ThemeId) {
   activeTheme.value = id
   applyTheme(id)
 }
-
-onMounted(loadProviders)
 
 function modelId(model: ApiModel): string {
   return String(model.model_name ?? model.id)
@@ -76,15 +167,18 @@ async function selectProvider(provider?: ApiProvider) {
 async function loadModels() {
   enabledModels.value = []
   upstreamModels.value = []
-  if (!selected.value?.api_key) return
+  if (!selected.value) return
   try {
     const [saved, remote] = await Promise.all([
       api.listEnabledModels(selected.value.id),
-      api.listModels(selected.value.id).catch(() => ({ models: [] as ApiModel[] })),
+      api.listModels(selected.value.id).catch(() => ({ models: [] as ApiModel[], error: '' })),
     ])
     enabledModels.value = saved
     upstreamModels.value = remote.models ?? []
     pickedModel.value = upstreamModels.value[0] ? String(upstreamModels.value[0].id) : ''
+    // 本机 Ollama / LM Studio 不需要 API Key；远端供应商缺 key 时把后端的真实原因显示出来，
+    // 而不是像旧版那样直接 return 留一个空下拉框（用户只会看到「没法选模型」）。
+    if (!upstreamModels.value.length && remote.error) message.value = remote.error
   } catch (error) {
     message.value = error instanceof Error ? error.message : String(error)
   }
@@ -265,6 +359,9 @@ async function removeModel(model: ApiModel) {
                 API Key
                 <input v-model="form.api_key" class="mt-1 h-9 w-full rounded-[8px] border border-line bg-surface-2 px-3 font-mono text-[12px] outline-none focus:border-accent" type="password" placeholder="sk-..." />
               </label>
+              <p v-if="selected && /localhost|127\.0\.0\.1/.test(selected.base_url)" class="mt-1 text-[11px] text-faint">
+                本机推理服务（Ollama / LM Studio）不校验 API Key，填 <code>ollama</code> 或留空都可以。
+              </p>
 
               <div class="mt-4 flex gap-2">
                 <button class="h-9 rounded-[8px] bg-accent px-4 text-[12.5px] text-white disabled:opacity-50" :disabled="busy" @click="saveProvider">{{ busy ? '保存中…' : '保存' }}</button>
@@ -303,19 +400,71 @@ async function removeModel(model: ApiModel) {
           </div>
 
           <!-- 转写引擎 -->
-          <div v-else-if="active === 'transcriber'" class="space-y-3">
+          <div v-else-if="active === 'transcriber'" class="space-y-4">
             <h2 class="text-[16px] font-semibold">转写引擎</h2>
-            <p class="text-[12px] text-muted">本地引擎需要先下载模型；在线引擎需要配置 API Key。</p>
-            <div class="rounded-[12px] border border-accent/40 bg-accent-soft/40 p-4">
-              <div class="flex items-center justify-between">
-                <p class="text-[14px] font-medium">faster-whisper</p>
-                <span class="rounded-full bg-surface px-2 py-0.5 text-[11px] text-accent">当前使用</span>
+            <p class="text-[12px] text-muted">本地引擎需要先下载模型；在线引擎（必剪 / 快手 / Groq）由服务端免费或按量提供。</p>
+
+            <div class="glass-card space-y-3 rounded-[12px] p-4">
+              <label class="block text-[12px] text-muted">
+                引擎
+                <select v-model="txType" class="mt-1 h-9 w-full rounded-[8px] border border-line bg-surface-2 px-2 text-[12.5px] outline-none focus:border-accent">
+                  <option
+                    v-for="item in txConfig?.available_types ?? []"
+                    :key="item.value"
+                    :value="item.value"
+                    :disabled="item.value === 'mlx-whisper' && !txConfig?.mlx_whisper_available"
+                  >
+                    {{ item.label }}
+                  </option>
+                </select>
+              </label>
+
+              <label v-if="txType === 'fast-whisper' || txType === 'mlx-whisper'" class="block text-[12px] text-muted">
+                模型档位
+                <select v-model="txSize" class="mt-1 h-9 w-full rounded-[8px] border border-line bg-surface-2 px-2 text-[12.5px] outline-none focus:border-accent">
+                  <option v-for="size in txConfig?.whisper_model_sizes ?? []" :key="size" :value="size">{{ size }}</option>
+                </select>
+              </label>
+
+              <div class="flex items-center gap-3">
+                <button
+                  class="h-9 rounded-[8px] bg-accent px-4 text-[12.5px] text-white disabled:opacity-50"
+                  :disabled="txSaving"
+                  @click="saveTranscriber"
+                >
+                  {{ txSaving ? '保存中…' : '保存转写配置' }}
+                </button>
+                <span v-if="txMsg" class="text-[11.5px] text-muted">{{ txMsg }}</span>
               </div>
-              <p class="mt-1 text-[12px] text-muted">模型 base · cuda / float16 · 20 线程可用</p>
             </div>
-            <div class="glass-card rounded-[12px] p-4">
-              <p class="text-[14px] font-medium">Groq</p>
-              <p class="mt-1 text-[12px] text-muted">whisper-large-v3-turbo · 在线转写</p>
+
+            <div v-if="txType === 'fast-whisper'" class="glass-card rounded-[12px] p-4">
+              <div class="flex items-center justify-between">
+                <p class="text-[13.5px] font-medium">本地模型</p>
+                <button class="text-[11.5px] text-accent" @click="refreshTranscriberStatus">刷新状态</button>
+              </div>
+              <ul class="mt-3 space-y-2">
+                <li
+                  v-for="size in txConfig?.whisper_model_sizes ?? []"
+                  :key="size"
+                  class="flex items-center gap-3 text-[12px]"
+                >
+                  <span class="w-24 font-mono">{{ size }}</span>
+                  <span
+                    class="flex-1"
+                    :class="statusOf(size)?.downloaded ? 'text-success' : statusOf(size)?.downloading ? 'text-accent' : statusOf(size)?.failed ? 'text-red-500' : 'text-faint'"
+                  >
+                    {{ statusOf(size)?.downloaded ? '已下载' : statusOf(size)?.downloading ? '下载中…' : statusOf(size)?.failed ? '下载失败' : '未下载' }}
+                  </span>
+                  <button
+                    v-if="!statusOf(size)?.downloaded && !statusOf(size)?.downloading"
+                    class="rounded-[7px] border border-line px-2 py-1 text-[11.5px] text-muted hover:bg-surface-2"
+                    @click="downloadTranscriberModel(size)"
+                  >
+                    下载
+                  </button>
+                </li>
+              </ul>
             </div>
           </div>
 
@@ -329,10 +478,14 @@ async function removeModel(model: ApiModel) {
               class="w-full rounded-[10px] border border-line bg-surface p-3 font-mono text-[12px] outline-none focus:border-accent"
               placeholder="SESSDATA=...; bili_jct=...;"
             />
-            <div class="flex gap-2">
-              <button class="h-8 rounded-[8px] bg-accent px-3 text-[12.5px] text-white">保存</button>
-              <button class="h-8 rounded-[8px] border border-line px-3 text-[12.5px] text-muted">测试连接</button>
+            <div class="flex items-center gap-3">
+              <button class="h-8 rounded-[8px] bg-accent px-3 text-[12.5px] text-white" @click="saveCookie">保存</button>
+              <span v-if="cookieMsg" class="text-[11.5px] text-muted">{{ cookieMsg }}</span>
             </div>
+            <p class="text-[11.5px] text-faint">
+              不想手动复制？在 backend\.env 里设置 <code>BILIBILI_COOKIES_FROM_BROWSER=edge</code>（或 chrome / firefox），
+              后端会直接读浏览器登录态。
+            </p>
           </div>
 
           <!-- 外观 -->

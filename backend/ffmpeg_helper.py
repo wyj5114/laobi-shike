@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import sys
 from dotenv import load_dotenv
@@ -36,27 +37,44 @@ def _load_dotenv_from_multiple_paths():
 
 
 _load_dotenv_from_multiple_paths()
+def get_ffmpeg_bin() -> str:
+    """返回可直接调用的 ffmpeg 可执行文件路径。
+
+    优先 FFMPEG_BIN_PATH（可以给目录，也可以直接给 ffmpeg.exe 的完整路径），
+    其次系统 PATH，最后退回裸命令名（由系统再解析）。
+    """
+    explicit = (os.getenv("FFMPEG_BIN_PATH") or "").strip()
+    if explicit:
+        candidate = explicit
+        if os.path.isdir(candidate):
+            candidate = os.path.join(candidate, "ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+        if os.path.isfile(candidate):
+            return candidate
+    found = shutil.which("ffmpeg")
+    return found or "ffmpeg"
+
+
 def check_ffmpeg_exists() -> bool:
     """
     检查 ffmpeg 是否可用。优先使用 FFMPEG_BIN_PATH 环境变量指定的路径。
     """
-    ffmpeg_bin_path = os.getenv("FFMPEG_BIN_PATH")
-    logger.info(f"FFMPEG_BIN_PATH: {ffmpeg_bin_path}")
-    if ffmpeg_bin_path and os.path.isdir(ffmpeg_bin_path):
-        os.environ["PATH"] = ffmpeg_bin_path + os.pathsep + os.environ.get("PATH", "")
-        logger.info(f"使用FFMPEG_BIN_PATH: {ffmpeg_bin_path}")
-    else:
-        # 遍历系统PATH寻找ffmpeg.exe
+    ffmpeg_bin = get_ffmpeg_bin()
+    logger.info(f"ffmpeg 路径: {ffmpeg_bin}")
+    if ffmpeg_bin == "ffmpeg":
+        # 没显式配置也没在 PATH 里找到，再按旧的“遍历 PATH”逻辑补一次，
+        # 兼容某些把 ffmpeg 放在非标准目录、但已加入 PATH 的机器
         system_path = os.environ.get("PATH", "")
-        path_dirs = system_path.split(os.pathsep)
-        for path_dir in path_dirs:
+        for path_dir in system_path.split(os.pathsep):
             ffmpeg_exe_path = os.path.join(path_dir, "ffmpeg.exe")
             if os.path.isfile(ffmpeg_exe_path):
-                os.environ["PATH"] = path_dir + os.pathsep + system_path
+                ffmpeg_bin = ffmpeg_exe_path
                 logger.info(f"在系统PATH中找到ffmpeg: {path_dir}")
                 break
+    else:
+        # 把 ffmpeg 所在目录放到 PATH 最前面，让 ffmpeg-python / 子进程也能直接调用
+        os.environ["PATH"] = os.path.dirname(ffmpeg_bin) + os.pathsep + os.environ.get("PATH", "")
     try:
-        subprocess.run(["ffmpeg", "-version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        subprocess.run([ffmpeg_bin, "-version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
         logger.info("ffmpeg 已安装")
         return True
     except (FileNotFoundError, OSError, subprocess.CalledProcessError):

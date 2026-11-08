@@ -18,7 +18,7 @@ from app.utils.path_helper import get_data_dir
 from app import create_app
 from app.services.transcriber_config_manager import TranscriberConfigManager
 from events import register_handler
-from ffmpeg_helper import ensure_ffmpeg_or_raise
+from ffmpeg_helper import ensure_ffmpeg_or_raise, check_ffmpeg_exists
 
 logger = get_logger(__name__)
 load_dotenv()
@@ -45,6 +45,13 @@ async def lifespan(app: FastAPI):
     try:
         logger.info("[startup 1/5] register_handler() — 注册事件处理器")
         register_handler()
+
+        # 提前把 ffmpeg 所在目录写进 PATH：截图、转码、groq 上传都靠子进程直接调 ffmpeg，
+        # 只在 /sys_health 时才检查的话，用户会在生成笔记到一半才发现 ffmpeg 缺失。
+        if check_ffmpeg_exists():
+            logger.info("           ffmpeg 可用（来自 FFMPEG_BIN_PATH 或系统 PATH）")
+        else:
+            logger.warning("           未检测到 ffmpeg：截图/转码功能会失败，请在 .env 里配置 FFMPEG_BIN_PATH")
 
         logger.info("[startup 2/5] init_db() — 初始化 SQLite 数据库")
         init_db()
@@ -115,7 +122,7 @@ app.mount("/media", StaticFiles(directory=get_data_dir()), name="media")
 
 
 if __name__ == "__main__":
-    port = int(os.getenv("BACKEND_PORT", 8483))
+    port = int(os.getenv("BACKEND_PORT", 8484))
     host = os.getenv("BACKEND_HOST", "0.0.0.0")
     logger.info(f"Starting server on {host}:{port}")
     uvicorn.run(app, host=host, port=port, reload=False)
